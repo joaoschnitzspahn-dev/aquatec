@@ -26,6 +26,9 @@ export type PersistedVisit = {
   startLongitude?: number;
   endLatitude?: number;
   endLongitude?: number;
+  startDistanceMeters?: number;
+  locationMismatch?: boolean;
+  gpsUnavailable?: boolean;
   observations?: string;
   createdAt: string;
   checklist?: Record<string, boolean>;
@@ -158,6 +161,9 @@ export async function hydrateDemoStore(): Promise<DemoStore> {
         startLongitude: saved.startLongitude,
         endLatitude: saved.endLatitude,
         endLongitude: saved.endLongitude,
+        startDistanceMeters: saved.startDistanceMeters,
+        locationMismatch: saved.locationMismatch,
+        gpsUnavailable: saved.gpsUnavailable,
         observations: saved.observations,
         createdAt: saved.createdAt,
       });
@@ -209,6 +215,9 @@ export async function persistVisitState(
     startLongitude: visit.startLongitude,
     endLatitude: visit.endLatitude,
     endLongitude: visit.endLongitude,
+    startDistanceMeters: visit.startDistanceMeters,
+    locationMismatch: visit.locationMismatch,
+    gpsUnavailable: visit.gpsUnavailable,
     observations: visit.observations,
     createdAt: visit.createdAt,
     ...extra,
@@ -259,6 +268,9 @@ export async function ensureVisit(visitId: string): Promise<ServiceVisit | null>
       startLongitude: saved?.startLongitude,
       endLatitude: saved?.endLatitude,
       endLongitude: saved?.endLongitude,
+      startDistanceMeters: saved?.startDistanceMeters,
+      locationMismatch: saved?.locationMismatch,
+      gpsUnavailable: saved?.gpsUnavailable,
       observations: saved?.observations,
       createdAt: saved?.createdAt || new Date().toISOString(),
     };
@@ -273,6 +285,9 @@ export async function ensureVisit(visitId: string): Promise<ServiceVisit | null>
     visit.startLongitude = saved.startLongitude;
     visit.endLatitude = saved.endLatitude;
     visit.endLongitude = saved.endLongitude;
+    visit.startDistanceMeters = saved.startDistanceMeters;
+    visit.locationMismatch = saved.locationMismatch;
+    visit.gpsUnavailable = saved.gpsUnavailable;
     visit.observations = saved.observations;
   }
 

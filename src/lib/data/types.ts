@@ -158,6 +158,11 @@ export interface ServiceVisit {
   startLongitude?: number;
   endLatitude?: number;
   endLongitude?: number;
+  /** Distância do GPS de chegada ao endereço do cliente (m). */
+  startDistanceMeters?: number;
+  /** true se GPS ficou longe do endereço — atendimento ainda é liberado. */
+  locationMismatch?: boolean;
+  gpsUnavailable?: boolean;
   observations?: string;
   signatureDataUrl?: string;
   createdAt: string;

@@ -592,14 +592,43 @@ export async function startVisit(formData: FormData) {
     };
   }
 
-  visit.status = "STARTED";
-  visit.startedAt = new Date().toISOString();
-  visit.startLatitude = formData.get("latitude")
+  const client = store.clients.find((c) => c.id === visit.clientId);
+  const { distanceMeters, formatDistance } = await import("@/lib/utils");
+
+  const lat = formData.get("latitude")
     ? Number(formData.get("latitude"))
     : undefined;
-  visit.startLongitude = formData.get("longitude")
+  const lng = formData.get("longitude")
     ? Number(formData.get("longitude"))
     : undefined;
+
+  // Sempre libera — GPS divergente só registra alerta para o Master
+  const MISMATCH_THRESHOLD_M = 150;
+  let distance: number | undefined;
+  let mismatch = false;
+  let gpsUnavailable = false;
+
+  if (
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    !Number.isNaN(lat) &&
+    !Number.isNaN(lng)
+  ) {
+    visit.startLatitude = lat;
+    visit.startLongitude = lng;
+    if (client?.latitude != null && client?.longitude != null) {
+      distance = distanceMeters(lat, lng, client.latitude, client.longitude);
+      mismatch = distance > MISMATCH_THRESHOLD_M;
+    }
+  } else {
+    gpsUnavailable = true;
+  }
+
+  visit.status = "STARTED";
+  visit.startedAt = new Date().toISOString();
+  visit.startDistanceMeters = distance;
+  visit.locationMismatch = mismatch;
+  visit.gpsUnavailable = gpsUnavailable;
 
   store.photos = store.photos.filter(
     (p) => !(p.visitId === visit.id && p.type === "ARRIVAL"),
@@ -613,15 +642,64 @@ export async function startVisit(formData: FormData) {
     createdAt: new Date().toISOString(),
   });
 
+  const coordsLabel =
+    lat != null && lng != null
+      ? `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+      : "GPS indisponível";
+  const distanceLabel =
+    distance != null
+      ? ` · ${formatDistance(distance)} do endereço cadastrado`
+      : client?.latitude == null
+        ? " · cliente sem GPS cadastrado"
+        : "";
+  const mismatchLabel = mismatch
+    ? " · ATENÇÃO: localização diferente do endereço"
+    : "";
+
+  store.notes.unshift({
+    id: id(),
+    visitId: visit.id,
+    content: `Chegada registrada por ${user.name}. Coordenada: ${coordsLabel}${distanceLabel}${mismatchLabel}.`,
+    createdAt: new Date().toISOString(),
+  });
+
   if (visit.appointmentId) {
     const apt = store.appointments.find((a) => a.id === visit.appointmentId);
     if (apt) apt.status = "IN_PROGRESS";
   }
 
+  if (mismatch || gpsUnavailable) {
+    notify(
+      user.companyId,
+      "GENERAL",
+      mismatch ? "GPS divergente na chegada" : "Chegada sem GPS",
+      mismatch
+        ? `${user.name} iniciou em ${client?.name || "cliente"} a ${formatDistance(distance!)} do endereço. Coordenada: ${coordsLabel}.`
+        : `${user.name} iniciou em ${client?.name || "cliente"} sem GPS. Foto registrada.`,
+      `/visits/${visit.id}`,
+    );
+  }
+
   await persistVisitState(visit, { hasArrivalPhoto: true });
-  audit(user.companyId, user.id, "START", "ServiceVisit", visit.id);
+  audit(user.companyId, user.id, "START", "ServiceVisit", visit.id, {
+    latitude: lat,
+    longitude: lng,
+    distanceMeters: distance,
+    locationMismatch: mismatch,
+    gpsUnavailable,
+  });
   revalidatePath(`/visits/${visit.id}`);
-  return { ok: true };
+  revalidatePath(`/clients/${visit.clientId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/schedule");
+  return {
+    ok: true,
+    locationMismatch: mismatch,
+    gpsUnavailable,
+    distanceMeters: distance,
+    latitude: lat,
+    longitude: lng,
+  };
 }
 
 export async function toggleChecklist(visitId: string, itemId: string) {

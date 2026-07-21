@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { Badge, Section } from "@/components/ui/misc";
-import { formatDateTime, minutesToLabel, whatsappUrl } from "@/lib/utils";
+import { formatDateTime, minutesToLabel, whatsappUrl, googleMapsUrl, formatDistance } from "@/lib/utils";
 import { generateVisitPdf } from "@/lib/pdf/visit-report";
 import type { getVisit } from "@/lib/data/actions";
 
@@ -95,6 +95,40 @@ export function VisitFlow({ data }: { data: VisitData }) {
                 ? ` · início ${formatDateTime(data.visit.startedAt)}`
                 : ""}
             </p>
+            {data.visit.startLatitude != null &&
+            data.visit.startLongitude != null ? (
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-[var(--muted)]">
+                  GPS chegada: {data.visit.startLatitude.toFixed(5)},{" "}
+                  {data.visit.startLongitude.toFixed(5)}
+                  {data.visit.startDistanceMeters != null
+                    ? ` · ${formatDistance(data.visit.startDistanceMeters)} do endereço`
+                    : ""}
+                  {data.visit.locationMismatch ? " · divergente" : ""}
+                </p>
+                <a
+                  href={googleMapsUrl(
+                    data.visit.startLatitude,
+                    data.visit.startLongitude,
+                  )}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-medium text-[var(--brand)]"
+                >
+                  Ver local real no Maps →
+                </a>
+              </div>
+            ) : data.visit.gpsUnavailable ? (
+              <p className="mt-2 text-xs text-[var(--warning)]">
+                Chegada sem GPS — Master pode revisar no histórico.
+              </p>
+            ) : null}
+            {data.visit.locationMismatch ? (
+              <div className="mt-2 rounded-2xl border border-[var(--warning)]/40 bg-amber-500/10 px-3 py-2 text-xs text-[var(--warning)]">
+                Localização diferente do endereço do cliente. Atendimento
+                liberado; coordenada registrada para o Master.
+              </div>
+            ) : null}
           </div>
           <Badge
             tone={
@@ -126,7 +160,9 @@ export function VisitFlow({ data }: { data: VisitData }) {
             <Section title="Iniciar atendimento">
               <div className="space-y-3 rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4">
                 <p className="text-sm text-[var(--muted)]">
-                  Foto de chegada obrigatória + GPS.
+                  Foto de chegada obrigatória. O GPS é registrado automaticamente
+                  — se não bater com o endereço, o atendimento ainda é liberado e
+                  a coordenada real fica no histórico para o Master.
                 </p>
                 <Input
                   type="file"
@@ -152,6 +188,7 @@ export function VisitFlow({ data }: { data: VisitData }) {
                   disabled={pending || !arrivalPhoto}
                   onClick={() => {
                     startTransition(async () => {
+                      toast.message("Obtendo GPS…");
                       const geo = await getGeo();
                       const fd = new FormData();
                       fd.set("visitId", data.visit.id);
@@ -159,19 +196,31 @@ export function VisitFlow({ data }: { data: VisitData }) {
                         fd.set("appointmentId", data.visit.appointmentId);
                       }
                       fd.set("photoUrl", arrivalPhoto);
-                      if (geo.latitude) fd.set("latitude", String(geo.latitude));
-                      if (geo.longitude)
+                      if (geo.latitude != null)
+                        fd.set("latitude", String(geo.latitude));
+                      if (geo.longitude != null)
                         fd.set("longitude", String(geo.longitude));
                       const res = await startVisit(fd);
-                      if (res.error) toast.error(res.error);
-                      else {
-                        toast.success("Atendimento iniciado");
-                        router.refresh();
+                      if (res.error) {
+                        toast.error(res.error);
+                        return;
                       }
+                      if (res.locationMismatch) {
+                        toast.warning(
+                          `GPS divergente (${formatDistance(res.distanceMeters || 0)}). Atendimento liberado — Master verá a coordenada.`,
+                        );
+                      } else if (res.gpsUnavailable) {
+                        toast.warning(
+                          "GPS indisponível. Atendimento liberado com foto.",
+                        );
+                      } else {
+                        toast.success("Chegada registrada no histórico");
+                      }
+                      router.refresh();
                     });
                   }}
                 >
-                  Iniciar atendimento
+                  Registrar chegada e iniciar
                 </Button>
               </div>
             </Section>

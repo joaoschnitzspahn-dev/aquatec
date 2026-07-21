@@ -20,6 +20,7 @@ import {
   googleMapsUrl,
   minutesToLabel,
   whatsappUrl,
+  formatDistance,
 } from "@/lib/utils";
 import { ClientQr } from "@/components/clients/client-qr";
 import { WaterChart } from "@/components/clients/water-chart";
@@ -233,11 +234,23 @@ export default async function ClientDetailPage({
                 className="block rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4"
               >
                 <div className="flex items-center justify-between">
-                  <p className="font-medium">{formatDateTime(v.createdAt)}</p>
+                  <p className="font-medium">
+                    {formatDateTime(v.startedAt || v.createdAt)}
+                  </p>
                   <Badge
-                    tone={v.status === "COMPLETED" ? "success" : "brand"}
+                    tone={
+                      v.status === "COMPLETED"
+                        ? "success"
+                        : v.status === "STARTED"
+                          ? "brand"
+                          : "default"
+                    }
                   >
-                    {v.status}
+                    {v.status === "STARTED"
+                      ? "Em andamento"
+                      : v.status === "COMPLETED"
+                        ? "Concluído"
+                        : v.status}
                   </Badge>
                 </div>
                 <p className="mt-1 text-sm text-[var(--muted)]">
@@ -246,7 +259,27 @@ export default async function ClientDetailPage({
                     ? ` · ${minutesToLabel(v.durationMinutes)}`
                     : ""}
                 </p>
-                {v.observations ? (
+                {v.startLatitude != null && v.startLongitude != null ? (
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    GPS início: {v.startLatitude.toFixed(5)},{" "}
+                    {v.startLongitude.toFixed(5)}
+                    {v.startDistanceMeters != null
+                      ? ` · ${formatDistance(v.startDistanceMeters)}`
+                      : ""}
+                    {v.locationMismatch ? " · divergente" : ""}
+                  </p>
+                ) : null}
+                {v.locationMismatch && user.role === "MASTER" ? (
+                  <p className="mt-1 text-xs text-[var(--warning)]">
+                    Local diferente do endereço —{" "}
+                    <span className="underline">abrir Maps no atendimento</span>
+                  </p>
+                ) : null}
+                {v.notes?.[0] ? (
+                  <p className="mt-2 text-sm text-[var(--muted)]">
+                    {v.notes[0].content}
+                  </p>
+                ) : v.observations ? (
                   <p className="mt-2 text-sm">{v.observations}</p>
                 ) : null}
               </Link>
