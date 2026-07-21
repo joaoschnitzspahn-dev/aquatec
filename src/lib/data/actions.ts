@@ -60,7 +60,8 @@ function notify(
 
 export async function getDashboardData() {
   const user = await requireUser();
-  const store = getStore();
+  const { hydrateDemoStore } = await import("./persist");
+  const store = await hydrateDemoStore();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
@@ -148,7 +149,8 @@ export async function getDashboardData() {
 export async function listClients(query?: string) {
   const user = await requireUser();
   assertCan(user, "clients:read");
-  const store = getStore();
+  const { hydrateDemoStore } = await import("./persist");
+  const store = await hydrateDemoStore();
   let clients = store.clients.filter((c) => c.companyId === user.companyId);
   if (user.role === "EMPLOYEE") {
     clients = clients.filter((c) => c.responsibleId === user.id);
@@ -171,7 +173,8 @@ export async function listClients(query?: string) {
 export async function getClient(clientId: string) {
   const user = await requireUser();
   assertCan(user, "clients:read");
-  const store = getStore();
+  const { hydrateDemoStore } = await import("./persist");
+  const store = await hydrateDemoStore();
   const client = store.clients.find(
     (c) => c.id === clientId && c.companyId === user.companyId,
   );
@@ -251,7 +254,8 @@ export async function getClient(clientId: string) {
 export async function upsertClient(formData: FormData) {
   const user = await requireUser();
   assertCan(user, "clients:write");
-  const store = getStore();
+  const { hydrateDemoStore, persistClientsAndStock } = await import("./persist");
+  const store = await hydrateDemoStore();
   const clientId = String(formData.get("id") || "");
   const payload = {
     name: String(formData.get("name") || ""),
@@ -281,6 +285,7 @@ export async function upsertClient(formData: FormData) {
     status: String(formData.get("status") || "ACTIVE") as ClientStatus,
   };
 
+  let savedId = clientId;
   if (clientId) {
     const idx = store.clients.findIndex((c) => c.id === clientId);
     if (idx >= 0) {
@@ -288,26 +293,33 @@ export async function upsertClient(formData: FormData) {
       audit(user.companyId, user.id, "UPDATE", "Client", clientId, payload);
     }
   } else {
-    const newId = id();
+    savedId = id();
     store.clients.push({
-      id: newId,
+      id: savedId,
       companyId: user.companyId,
-      qrCodeToken: `qr_${newId.slice(0, 8)}`,
+      qrCodeToken: `qr_${savedId.slice(0, 8)}`,
       createdAt: new Date().toISOString(),
       ...payload,
     });
-    audit(user.companyId, user.id, "CREATE", "Client", newId, payload);
+    audit(user.companyId, user.id, "CREATE", "Client", savedId, payload);
   }
 
+  await persistClientsAndStock(store);
   revalidatePath("/clients");
-  return { ok: true };
+  revalidatePath(`/clients/${savedId}`);
+  return { ok: true, id: savedId };
 }
 
 export async function deleteClient(clientId: string) {
   const user = await requireUser();
   assertCan(user, "clients:delete");
-  const store = getStore();
+  const { hydrateDemoStore, persistClientsAndStock, markClientDeleted } =
+    await import("./persist");
+  const store = await hydrateDemoStore();
   store.clients = store.clients.filter((c) => c.id !== clientId);
+  store.clientStock = store.clientStock.filter((s) => s.clientId !== clientId);
+  await markClientDeleted(clientId);
+  await persistClientsAndStock(store);
   audit(user.companyId, user.id, "DELETE", "Client", clientId);
   revalidatePath("/clients");
   return { ok: true };
@@ -316,14 +328,16 @@ export async function deleteClient(clientId: string) {
 export async function listProducts() {
   const user = await requireUser();
   assertCan(user, "stock:read");
-  const store = getStore();
+  const { hydrateDemoStore } = await import("./persist");
+  const store = await hydrateDemoStore();
   return store.products.filter((p) => p.companyId === user.companyId);
 }
 
 export async function upsertProduct(formData: FormData) {
   const user = await requireUser();
   assertCan(user, "stock:write");
-  const store = getStore();
+  const { hydrateDemoStore, persistProducts } = await import("./persist");
+  const store = await hydrateDemoStore();
   const productId = String(formData.get("id") || "");
   const payload = {
     name: String(formData.get("name") || ""),
@@ -362,13 +376,15 @@ export async function upsertProduct(formData: FormData) {
     });
     audit(user.companyId, user.id, "CREATE", "Product", newId);
   }
+  await persistProducts(store);
   revalidatePath("/stock");
   return { ok: true };
 }
 
 export async function updateClientStock(formData: FormData) {
   const user = await requireUser();
-  const store = getStore();
+  const { hydrateDemoStore, persistClientsAndStock } = await import("./persist");
+  const store = await hydrateDemoStore();
   const clientId = String(formData.get("clientId"));
   const productId = String(formData.get("productId"));
   const quantity = Number(formData.get("quantity") || 0);
@@ -377,6 +393,9 @@ export async function updateClientStock(formData: FormData) {
   );
   if (existing) {
     existing.quantity = quantity;
+    existing.minQuantity = Number(
+      formData.get("minQuantity") || existing.minQuantity,
+    );
     existing.updatedAt = new Date().toISOString();
     if (existing.quantity <= existing.minQuantity) {
       const client = store.clients.find((c) => c.id === clientId);
@@ -400,6 +419,7 @@ export async function updateClientStock(formData: FormData) {
       updatedAt: new Date().toISOString(),
     });
   }
+  await persistClientsAndStock(store);
   revalidatePath(`/clients/${clientId}`);
   return { ok: true };
 }
@@ -553,13 +573,24 @@ export async function startVisit(formData: FormData) {
   const user = await requireUser();
   assertCan(user, "visits:execute");
   const store = getStore();
-  const visitId = String(formData.get("visitId"));
+  let visitId = String(formData.get("visitId") || "");
+  const appointmentId = String(formData.get("appointmentId") || "");
   const photoUrl = String(formData.get("photoUrl") || "");
   if (!photoUrl) return { error: "Foto de chegada obrigatória." };
 
-  const { ensureVisit, persistVisitState } = await import("./persist");
-  const visit = await ensureVisit(visitId);
-  if (!visit) return { error: "Atendimento não encontrado. Volte na agenda e abra de novo." };
+  const { ensureVisit, ensureVisitForAppointment, persistVisitState } =
+    await import("./persist");
+
+  let visit = visitId ? await ensureVisit(visitId) : null;
+  if (!visit && appointmentId) {
+    visit = await ensureVisitForAppointment(appointmentId);
+    visitId = visit?.id || "";
+  }
+  if (!visit) {
+    return {
+      error: "Atendimento não encontrado. Volte na agenda e abra de novo.",
+    };
+  }
 
   visit.status = "STARTED";
   visit.startedAt = new Date().toISOString();

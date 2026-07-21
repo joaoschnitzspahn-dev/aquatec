@@ -155,6 +155,9 @@ export function VisitFlow({ data }: { data: VisitData }) {
                       const geo = await getGeo();
                       const fd = new FormData();
                       fd.set("visitId", data.visit.id);
+                      if (data.visit.appointmentId) {
+                        fd.set("appointmentId", data.visit.appointmentId);
+                      }
                       fd.set("photoUrl", arrivalPhoto);
                       if (geo.latitude) fd.set("latitude", String(geo.latitude));
                       if (geo.longitude)

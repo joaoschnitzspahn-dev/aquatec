@@ -72,6 +72,15 @@ export default async function ClientDetailPage({
           ) : null}
         </div>
 
+        {user.role === "MASTER" ? (
+          <Button asChild className="w-full" size="lg">
+            <Link href={`/clients/${client.id}/edit`}>
+              <Pencil className="h-5 w-5" />
+              Editar cliente
+            </Link>
+          </Button>
+        ) : null}
+
         <Section title="Informações">
           <div className="space-y-3 rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4 text-sm">
             <p className="flex gap-2 text-[var(--muted)]">
@@ -104,14 +113,6 @@ export default async function ClientDetailPage({
                     <MessageCircle className="h-4 w-4" />
                     WhatsApp
                   </a>
-                </Button>
-              ) : null}
-              {user.role === "MASTER" ? (
-                <Button asChild variant="outline" size="sm">
-                  <Link href={`/clients/${client.id}/edit`}>
-                    <Pencil className="h-4 w-4" />
-                    Editar
-                  </Link>
                 </Button>
               ) : null}
             </div>

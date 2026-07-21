@@ -17,8 +17,9 @@ import { listNotifications } from "@/lib/data/actions";
 import { redirect } from "next/navigation";
 
 const links = [
+  { href: "/clients/new", label: "Adicionar cliente", icon: Users, perm: "clients:write" as const, masterOnly: true },
+  { href: "/stock", label: "Estoque e produtos", icon: Boxes, perm: "stock:read" as const },
   { href: "/search", label: "Busca global", icon: Search, perm: null },
-  { href: "/stock", label: "Estoque geral", icon: Boxes, perm: "stock:read" as const },
   { href: "/employees", label: "Funcionários", icon: Users, perm: "employees:read" as const },
   { href: "/reports", label: "Relatórios / KPIs", icon: FileText, perm: "reports:read" as const },
   { href: "/expenses", label: "Despesas", icon: Receipt, perm: null },
@@ -33,9 +34,10 @@ export default async function MorePage() {
   const notifications = await listNotifications();
   const unread = notifications.filter((n) => !n.read).length;
 
-  const visible = links.filter(
-    (l) => !l.perm || can(user, l.perm),
-  );
+  const visible = links.filter((l) => {
+    if (l.masterOnly && user.role !== "MASTER") return false;
+    return !l.perm || can(user, l.perm);
+  });
 
   return (
     <>

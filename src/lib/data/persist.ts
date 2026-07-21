@@ -1,8 +1,16 @@
 import { cookies } from "next/headers";
-import type { DemoStore, ServiceVisit, VisitStatus } from "./types";
+import type {
+  Client,
+  ClientStockItem,
+  DemoStore,
+  Product,
+  ServiceVisit,
+  VisitStatus,
+} from "./types";
 import { getStore } from "./store";
 
 export const DEMO_VISITS_COOKIE = "aquatec_demo_visits";
+export const DEMO_DATA_COOKIE = "aquatec_demo_data";
 
 export type PersistedVisit = {
   id: string;
@@ -25,6 +33,14 @@ export type PersistedVisit = {
   hasFinalPhoto?: boolean;
 };
 
+type DemoDataBlob = {
+  clients?: Client[];
+  products?: Product[];
+  clientStock?: ClientStockItem[];
+  deletedClientIds?: string[];
+  deletedProductIds?: string[];
+};
+
 function visitIdForAppointment(appointmentId: string) {
   return `visit_${appointmentId}`;
 }
@@ -34,29 +50,151 @@ export function appointmentIdFromVisitId(visitId: string) {
   return undefined;
 }
 
-async function readPersisted(): Promise<Record<string, PersistedVisit>> {
+export function getVisitIdForAppointment(appointmentId: string) {
+  return visitIdForAppointment(appointmentId);
+}
+
+async function readJsonCookie<T>(name: string): Promise<T | null> {
   try {
     const jar = await cookies();
-    const raw = jar.get(DEMO_VISITS_COOKIE)?.value;
-    if (!raw) return {};
-    return JSON.parse(decodeURIComponent(raw)) as Record<string, PersistedVisit>;
+    const raw = jar.get(name)?.value;
+    if (!raw) return null;
+    return JSON.parse(decodeURIComponent(raw)) as T;
   } catch {
-    return {};
+    return null;
   }
 }
 
-async function writePersisted(map: Record<string, PersistedVisit>) {
+async function writeJsonCookie(name: string, value: unknown) {
   const jar = await cookies();
-  jar.set(DEMO_VISITS_COOKIE, encodeURIComponent(JSON.stringify(map)), {
+  const payload = encodeURIComponent(JSON.stringify(value));
+  // cookies ~4kb — keep payload lean
+  if (payload.length > 3500) {
+    console.warn(`[demo] cookie ${name} too large (${payload.length})`);
+  }
+  jar.set(name, payload, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge: 60 * 60 * 24 * 14,
   });
 }
 
-export async function persistVisitState(visit: ServiceVisit, extra?: Partial<PersistedVisit>) {
-  const map = await readPersisted();
+async function readPersistedVisits(): Promise<Record<string, PersistedVisit>> {
+  return (await readJsonCookie<Record<string, PersistedVisit>>(DEMO_VISITS_COOKIE)) || {};
+}
+
+async function writePersistedVisits(map: Record<string, PersistedVisit>) {
+  await writeJsonCookie(DEMO_VISITS_COOKIE, map);
+}
+
+async function readDemoData(): Promise<DemoDataBlob> {
+  return (await readJsonCookie<DemoDataBlob>(DEMO_DATA_COOKIE)) || {};
+}
+
+async function writeDemoData(data: DemoDataBlob) {
+  await writeJsonCookie(DEMO_DATA_COOKIE, data);
+}
+
+/** Aplica overlays de cookie no store em memória (Vercel serverless). */
+export async function hydrateDemoStore(): Promise<DemoStore> {
+  const store = getStore();
+  const data = await readDemoData();
+  const visits = await readPersistedVisits();
+
+  if (data.deletedClientIds?.length) {
+    store.clients = store.clients.filter(
+      (c) => !data.deletedClientIds!.includes(c.id),
+    );
+  }
+  if (data.deletedProductIds?.length) {
+    store.products = store.products.filter(
+      (p) => !data.deletedProductIds!.includes(p.id),
+    );
+  }
+
+  if (data.clients?.length) {
+    for (const client of data.clients) {
+      const idx = store.clients.findIndex((c) => c.id === client.id);
+      if (idx >= 0) store.clients[idx] = client;
+      else store.clients.push(client);
+    }
+  }
+
+  if (data.products?.length) {
+    for (const product of data.products) {
+      const idx = store.products.findIndex((p) => p.id === product.id);
+      if (idx >= 0) store.products[idx] = product;
+      else store.products.push(product);
+    }
+  }
+
+  if (data.clientStock?.length) {
+    for (const item of data.clientStock) {
+      const idx = store.clientStock.findIndex(
+        (s) => s.clientId === item.clientId && s.productId === item.productId,
+      );
+      if (idx >= 0) store.clientStock[idx] = item;
+      else store.clientStock.push(item);
+    }
+  }
+
+  for (const saved of Object.values(visits)) {
+    const idx = store.visits.findIndex((v) => v.id === saved.id);
+    if (idx >= 0) {
+      store.visits[idx] = { ...store.visits[idx], ...saved };
+    } else {
+      store.visits.push({
+        id: saved.id,
+        companyId: saved.companyId,
+        appointmentId: saved.appointmentId,
+        clientId: saved.clientId,
+        employeeId: saved.employeeId,
+        status: saved.status,
+        startedAt: saved.startedAt,
+        finishedAt: saved.finishedAt,
+        durationMinutes: saved.durationMinutes,
+        startLatitude: saved.startLatitude,
+        startLongitude: saved.startLongitude,
+        endLatitude: saved.endLatitude,
+        endLongitude: saved.endLongitude,
+        observations: saved.observations,
+        createdAt: saved.createdAt,
+      });
+    }
+  }
+
+  return store;
+}
+
+export async function persistClientsAndStock(store: DemoStore) {
+  const data = await readDemoData();
+  data.clients = store.clients;
+  data.clientStock = store.clientStock;
+  data.products = store.products;
+  await writeDemoData(data);
+}
+
+export async function persistProducts(store: DemoStore) {
+  const data = await readDemoData();
+  data.products = store.products;
+  await writeDemoData(data);
+}
+
+export async function markClientDeleted(clientId: string) {
+  const data = await readDemoData();
+  data.deletedClientIds = Array.from(
+    new Set([...(data.deletedClientIds || []), clientId]),
+  );
+  data.clients = (data.clients || []).filter((c) => c.id !== clientId);
+  await writeDemoData(data);
+}
+
+export async function persistVisitState(
+  visit: ServiceVisit,
+  extra?: Partial<PersistedVisit>,
+) {
+  const map = await readPersistedVisits();
   map[visit.id] = {
     id: visit.id,
     appointmentId: visit.appointmentId,
@@ -78,21 +216,24 @@ export async function persistVisitState(visit: ServiceVisit, extra?: Partial<Per
     hasArrivalPhoto: extra?.hasArrivalPhoto ?? map[visit.id]?.hasArrivalPhoto,
     hasFinalPhoto: extra?.hasFinalPhoto ?? map[visit.id]?.hasFinalPhoto,
   };
-  await writePersisted(map);
+  await writePersistedVisits(map);
 }
 
-export async function persistChecklist(visitId: string, itemId: string, checked: boolean) {
-  const map = await readPersisted();
+export async function persistChecklist(
+  visitId: string,
+  itemId: string,
+  checked: boolean,
+) {
+  const map = await readPersistedVisits();
   const current = map[visitId];
   if (!current) return;
   current.checklist = { ...(current.checklist || {}), [itemId]: checked };
-  await writePersisted(map);
+  await writePersistedVisits(map);
 }
 
-/** Garante visita em memória + cookie (necessário no Vercel serverless). */
 export async function ensureVisit(visitId: string): Promise<ServiceVisit | null> {
-  const store = getStore();
-  const persisted = await readPersisted();
+  const store = await hydrateDemoStore();
+  const persisted = await readPersistedVisits();
 
   let visit = store.visits.find((v) => v.id === visitId);
   const aptId =
@@ -137,7 +278,6 @@ export async function ensureVisit(visitId: string): Promise<ServiceVisit | null>
 
   if (!visit) return null;
 
-  // checklist base
   for (const item of store.checklistItems) {
     const exists = store.checklistResponses.find(
       (r) => r.visitId === visit!.id && r.itemId === item.id,
@@ -159,41 +299,8 @@ export async function ensureVisit(visitId: string): Promise<ServiceVisit | null>
 }
 
 export async function ensureVisitForAppointment(appointmentId: string) {
-  const store = getStore();
+  const store = await hydrateDemoStore();
   const apt = store.appointments.find((a) => a.id === appointmentId);
   if (!apt) return null;
-  const visitId = visitIdForAppointment(appointmentId);
-  return ensureVisit(visitId);
-}
-
-export function getVisitIdForAppointment(appointmentId: string) {
-  return visitIdForAppointment(appointmentId);
-}
-
-export async function hydrateStoreFromCookies(store: DemoStore) {
-  const persisted = await readPersisted();
-  for (const saved of Object.values(persisted)) {
-    const idx = store.visits.findIndex((v) => v.id === saved.id);
-    if (idx >= 0) {
-      store.visits[idx] = { ...store.visits[idx], ...saved };
-    } else if (saved.appointmentId) {
-      store.visits.push({
-        id: saved.id,
-        companyId: saved.companyId,
-        appointmentId: saved.appointmentId,
-        clientId: saved.clientId,
-        employeeId: saved.employeeId,
-        status: saved.status,
-        startedAt: saved.startedAt,
-        finishedAt: saved.finishedAt,
-        durationMinutes: saved.durationMinutes,
-        startLatitude: saved.startLatitude,
-        startLongitude: saved.startLongitude,
-        endLatitude: saved.endLatitude,
-        endLongitude: saved.endLongitude,
-        observations: saved.observations,
-        createdAt: saved.createdAt,
-      });
-    }
-  }
+  return ensureVisit(visitIdForAppointment(appointmentId));
 }
