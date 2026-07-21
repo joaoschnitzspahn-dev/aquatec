@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+:root {
+  --brand: #2b8cff;
+  --brand-muted: #1a6fd1;
+  --brand-soft: rgba(43, 140, 255, 0.12);
+  --bg: #f4f7fb;
+  --bg-elevated: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #eef3f9;
+  --foreground: #0b1220;
+  --muted: #5b6b7c;
+  --border: rgba(15, 23, 42, 0.08);
+  --danger: #e11d48;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --radius: 16px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.dark {
+  --brand: #3b95ff;
+  --brand-muted: #7eb6ff;
+  --brand-soft: rgba(59, 149, 255, 0.16);
+  --bg: #05070b;
+  --bg-elevated: #0c1017;
+  --surface: #10151e;
+  --surface-2: #161d29;
+  --foreground: #f3f6fb;
+  --muted: #93a0b4;
+  --border: rgba(255, 255, 255, 0.08);
+  --danger: #fb7185;
+  --success: #34d399;
+  --warning: #fbbf24;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--foreground);
+  --color-brand: var(--brand);
+  --color-brand-muted: var(--brand-muted);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, var(--brand-soft), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(43, 140, 255, 0.06), transparent 50%),
+    var(--bg);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+.dark body {
+  background:
+    radial-gradient(1000px 500px at 20% -20%, rgba(59, 149, 255, 0.18), transparent 50%),
+    radial-gradient(800px 400px at 100% 0%, rgba(59, 149, 255, 0.08), transparent 45%),
+    var(--bg);
+}
+
+.app-shell {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  position: relative;
+}
+
+.glass {
+  background: color-mix(in oklab, var(--surface) 88%, transparent);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+}
+
+.wave-divider {
+  height: 2px;
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--brand),
+    transparent
+  );
+  opacity: 0.55;
+  border-radius: 999px;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.35s ease-out both;
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
