@@ -494,43 +494,30 @@ export async function getOrCreateVisit(appointmentId: string) {
   const apt = store.appointments.find((a) => a.id === appointmentId);
   if (!apt) throw new Error("Agendamento não encontrado");
 
-  let visit = store.visits.find((v) => v.appointmentId === appointmentId);
-  if (!visit) {
-    visit = {
-      id: id(),
-      companyId: user.companyId,
-      appointmentId,
-      clientId: apt.clientId,
-      employeeId: apt.employeeId,
-      status: "PENDING",
-      createdAt: new Date().toISOString(),
-    };
-    store.visits.push(visit);
-    for (const item of store.checklistItems) {
-      store.checklistResponses.push({
-        visitId: visit.id,
-        itemId: item.id,
-        checked: false,
-      });
-    }
-  }
+  const { ensureVisitForAppointment, getVisitIdForAppointment, persistVisitState } =
+    await import("./persist");
 
-  return getVisit(visit.id);
+  const visit = await ensureVisitForAppointment(appointmentId);
+  if (!visit) throw new Error("Não foi possível abrir o atendimento");
+
+  await persistVisitState(visit);
+  return getVisit(getVisitIdForAppointment(appointmentId));
 }
 
 export async function getVisit(visitId: string) {
   const user = await requireUser();
-  const store = getStore();
-  const visit = store.visits.find((v) => v.id === visitId);
+  const { ensureVisit } = await import("./persist");
+  const visit = await ensureVisit(visitId);
   if (!visit) throw new Error("Atendimento não encontrado");
 
+  const store = getStore();
   const client = store.clients.find((c) => c.id === visit.clientId)!;
   const employee = store.users.find((u) => u.id === visit.employeeId)!;
   const checklist = store.checklistItems
     .map((item) => ({
       ...item,
       response: store.checklistResponses.find(
-        (r) => r.visitId === visitId && r.itemId === item.id,
+        (r) => r.visitId === visit.id && r.itemId === item.id,
       ),
     }))
     .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -540,15 +527,15 @@ export async function getVisit(visitId: string) {
     client,
     employee,
     checklist,
-    readings: store.readings.filter((r) => r.visitId === visitId),
+    readings: store.readings.filter((r) => r.visitId === visit.id),
     usages: store.usages
-      .filter((u) => u.visitId === visitId)
+      .filter((u) => u.visitId === visit.id)
       .map((u) => ({
         ...u,
         product: store.products.find((p) => p.id === u.productId)!,
       })),
-    photos: store.photos.filter((p) => p.visitId === visitId),
-    notes: store.notes.filter((n) => n.visitId === visitId),
+    photos: store.photos.filter((p) => p.visitId === visit.id),
+    notes: store.notes.filter((n) => n.visitId === visit.id),
     clientStock: store.clientStock
       .filter((s) => s.clientId === visit.clientId)
       .map((s) => ({
@@ -570,8 +557,9 @@ export async function startVisit(formData: FormData) {
   const photoUrl = String(formData.get("photoUrl") || "");
   if (!photoUrl) return { error: "Foto de chegada obrigatória." };
 
-  const visit = store.visits.find((v) => v.id === visitId);
-  if (!visit) return { error: "Atendimento não encontrado." };
+  const { ensureVisit, persistVisitState } = await import("./persist");
+  const visit = await ensureVisit(visitId);
+  if (!visit) return { error: "Atendimento não encontrado. Volte na agenda e abra de novo." };
 
   visit.status = "STARTED";
   visit.startedAt = new Date().toISOString();
@@ -582,9 +570,12 @@ export async function startVisit(formData: FormData) {
     ? Number(formData.get("longitude"))
     : undefined;
 
+  store.photos = store.photos.filter(
+    (p) => !(p.visitId === visit.id && p.type === "ARRIVAL"),
+  );
   store.photos.push({
     id: id(),
-    visitId,
+    visitId: visit.id,
     type: "ARRIVAL",
     url: photoUrl,
     caption: "Foto de chegada",
@@ -596,8 +587,9 @@ export async function startVisit(formData: FormData) {
     if (apt) apt.status = "IN_PROGRESS";
   }
 
-  audit(user.companyId, user.id, "START", "ServiceVisit", visitId);
-  revalidatePath(`/visits/${visitId}`);
+  await persistVisitState(visit, { hasArrivalPhoto: true });
+  audit(user.companyId, user.id, "START", "ServiceVisit", visit.id);
+  revalidatePath(`/visits/${visit.id}`);
   return { ok: true };
 }
 
@@ -605,16 +597,21 @@ export async function toggleChecklist(visitId: string, itemId: string) {
   const user = await requireUser();
   assertCan(user, "visits:execute");
   const store = getStore();
+  const { ensureVisit, persistChecklist } = await import("./persist");
+  const visit = await ensureVisit(visitId);
+  if (!visit) return { error: "Atendimento não encontrado" };
+
   const response = store.checklistResponses.find(
-    (r) => r.visitId === visitId && r.itemId === itemId,
+    (r) => r.visitId === visit.id && r.itemId === itemId,
   );
   if (response) {
     response.checked = !response.checked;
     response.checkedAt = response.checked
       ? new Date().toISOString()
       : undefined;
+    await persistChecklist(visit.id, itemId, response.checked);
   }
-  revalidatePath(`/visits/${visitId}`);
+  revalidatePath(`/visits/${visit.id}`);
   return { ok: true };
 }
 
@@ -626,7 +623,8 @@ export async function addProductUsage(formData: FormData) {
   const productId = String(formData.get("productId"));
   const quantity = Number(formData.get("quantity") || 0);
   let source = String(formData.get("source") || "CLIENT") as StockSource;
-  const visit = store.visits.find((v) => v.id === visitId);
+  const { ensureVisit } = await import("./persist");
+  const visit = await ensureVisit(visitId);
   if (!visit) return { error: "Atendimento não encontrado" };
 
   const clientStock = store.clientStock.find(
@@ -673,14 +671,14 @@ export async function addProductUsage(formData: FormData) {
 
   store.usages.push({
     id: id(),
-    visitId,
+    visitId: visit.id,
     productId,
     quantity,
     source,
     createdAt: new Date().toISOString(),
   });
 
-  revalidatePath(`/visits/${visitId}`);
+  revalidatePath(`/visits/${visit.id}`);
   return { ok: true };
 }
 
@@ -689,9 +687,13 @@ export async function saveWaterReading(formData: FormData) {
   assertCan(user, "visits:execute");
   const store = getStore();
   const visitId = String(formData.get("visitId"));
+  const { ensureVisit } = await import("./persist");
+  const visit = await ensureVisit(visitId);
+  if (!visit) return { error: "Atendimento não encontrado" };
+
   store.readings.push({
     id: id(),
-    visitId,
+    visitId: visit.id,
     ph: formData.get("ph") ? Number(formData.get("ph")) : undefined,
     chlorine: formData.get("chlorine")
       ? Number(formData.get("chlorine"))
@@ -705,7 +707,7 @@ export async function saveWaterReading(formData: FormData) {
     notes: String(formData.get("notes") || "") || undefined,
     recordedAt: new Date().toISOString(),
   });
-  revalidatePath(`/visits/${visitId}`);
+  revalidatePath(`/visits/${visit.id}`);
   return { ok: true };
 }
 
@@ -714,13 +716,17 @@ export async function addVisitNote(formData: FormData) {
   assertCan(user, "visits:execute");
   const store = getStore();
   const visitId = String(formData.get("visitId"));
+  const { ensureVisit } = await import("./persist");
+  const visit = await ensureVisit(visitId);
+  if (!visit) return { error: "Atendimento não encontrado" };
+
   store.notes.push({
     id: id(),
-    visitId,
+    visitId: visit.id,
     content: String(formData.get("content") || ""),
     createdAt: new Date().toISOString(),
   });
-  revalidatePath(`/visits/${visitId}`);
+  revalidatePath(`/visits/${visit.id}`);
   return { ok: true };
 }
 
@@ -731,10 +737,11 @@ export async function finishVisit(formData: FormData) {
   const visitId = String(formData.get("visitId"));
   const photoUrl = String(formData.get("photoUrl") || "");
   const signatureDataUrl = String(formData.get("signatureDataUrl") || "");
-  const visit = store.visits.find((v) => v.id === visitId);
+  const { ensureVisit, persistVisitState } = await import("./persist");
+  const visit = await ensureVisit(visitId);
   if (!visit) return { error: "Atendimento não encontrado" };
 
-  const checklist = store.checklistResponses.filter((r) => r.visitId === visitId);
+  const checklist = store.checklistResponses.filter((r) => r.visitId === visit.id);
   const required = store.checklistItems.filter((i) => i.required);
   const allRequired = required.every((item) =>
     checklist.find((r) => r.itemId === item.id && r.checked),
@@ -765,7 +772,7 @@ export async function finishVisit(formData: FormData) {
 
   store.photos.push({
     id: id(),
-    visitId,
+    visitId: visit.id,
     type: "FINAL",
     url: photoUrl,
     caption: "Foto final",
@@ -775,7 +782,7 @@ export async function finishVisit(formData: FormData) {
   if (signatureDataUrl) {
     store.photos.push({
       id: id(),
-      visitId,
+      visitId: visit.id,
       type: "SIGNATURE",
       url: signatureDataUrl,
       caption: "Assinatura do cliente",
@@ -788,8 +795,9 @@ export async function finishVisit(formData: FormData) {
     if (apt) apt.status = "COMPLETED";
   }
 
-  audit(user.companyId, user.id, "COMPLETE", "ServiceVisit", visitId);
-  revalidatePath(`/visits/${visitId}`);
+  await persistVisitState(visit, { hasFinalPhoto: true });
+  audit(user.companyId, user.id, "COMPLETE", "ServiceVisit", visit.id);
+  revalidatePath(`/visits/${visit.id}`);
   revalidatePath("/dashboard");
   return { ok: true };
 }

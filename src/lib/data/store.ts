@@ -347,7 +347,7 @@ export function createSeedStore(): DemoStore {
     appointments,
     visits: [
       {
-        id: "visit_past",
+        id: "visit_apt_past",
         companyId: COMPANY_ID,
         appointmentId: "apt_past",
         clientId: CLIENT_1,
@@ -371,7 +371,7 @@ export function createSeedStore(): DemoStore {
       required: i < 5,
     })),
     checklistResponses: CHECKLIST_LABELS.map((_, i) => ({
-      visitId: "visit_past",
+      visitId: "visit_apt_past",
       itemId: `chk_${i + 1}`,
       checked: true,
       checkedAt: iso(addHours(subDays(today, 2), 9)),
@@ -379,7 +379,7 @@ export function createSeedStore(): DemoStore {
     readings: [
       {
         id: "read_1",
-        visitId: "visit_past",
+        visitId: "visit_apt_past",
         ph: 7.4,
         chlorine: 2.1,
         alkalinity: 100,
@@ -388,7 +388,7 @@ export function createSeedStore(): DemoStore {
       },
       {
         id: "read_2",
-        visitId: "visit_past",
+        visitId: "visit_apt_past",
         ph: 7.2,
         chlorine: 1.8,
         alkalinity: 95,
@@ -399,7 +399,7 @@ export function createSeedStore(): DemoStore {
     usages: [
       {
         id: "usage_1",
-        visitId: "visit_past",
+        visitId: "visit_apt_past",
         productId: "prod_cloro",
         quantity: 0.5,
         source: "CLIENT",
@@ -407,7 +407,7 @@ export function createSeedStore(): DemoStore {
       },
       {
         id: "usage_2",
-        visitId: "visit_past",
+        visitId: "visit_apt_past",
         productId: "prod_clarificante",
         quantity: 0.2,
         source: "COMPANY",
@@ -417,7 +417,7 @@ export function createSeedStore(): DemoStore {
     photos: [
       {
         id: "photo_1",
-        visitId: "visit_past",
+        visitId: "visit_apt_past",
         type: "ARRIVAL",
         url: "/brand/aquatec-logo.png",
         caption: "Chegada",
@@ -425,7 +425,7 @@ export function createSeedStore(): DemoStore {
       },
       {
         id: "photo_2",
-        visitId: "visit_past",
+        visitId: "visit_apt_past",
         type: "FINAL",
         url: "/brand/aquatec-logo.png",
         caption: "Final",
@@ -435,7 +435,7 @@ export function createSeedStore(): DemoStore {
     notes: [
       {
         id: "note_1",
-        visitId: "visit_past",
+        visitId: "visit_apt_past",
         content: "Cliente solicitou verificação do timer.",
         createdAt: iso(subDays(today, 2)),
       },
@@ -584,7 +584,7 @@ export function createSeedStore(): DemoStore {
         userId: EMP_ID,
         action: "COMPLETE",
         entity: "ServiceVisit",
-        entityId: "visit_past",
+        entityId: "visit_apt_past",
         createdAt: iso(subDays(today, 2)),
       },
     ],
