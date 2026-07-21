@@ -510,17 +510,15 @@ export async function upsertAppointment(formData: FormData) {
 export async function getOrCreateVisit(appointmentId: string) {
   const user = await requireUser();
   assertCan(user, "visits:execute");
-  const store = getStore();
-  const apt = store.appointments.find((a) => a.id === appointmentId);
-  if (!apt) throw new Error("Agendamento não encontrado");
 
-  const { ensureVisitForAppointment, getVisitIdForAppointment, persistVisitState } =
+  const { ensureVisitForAppointment, getVisitIdForAppointment } =
     await import("./persist");
 
   const visit = await ensureVisitForAppointment(appointmentId);
-  if (!visit) throw new Error("Não foi possível abrir o atendimento");
+  if (!visit) throw new Error("Agendamento não encontrado");
 
-  await persistVisitState(visit);
+  // Não gravar cookie aqui — esta função roda no render da página (RSC).
+  // Persistência fica só em Server Actions (iniciar/finalizar).
   return getVisit(getVisitIdForAppointment(appointmentId));
 }
 

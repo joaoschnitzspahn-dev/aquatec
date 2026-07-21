@@ -69,18 +69,23 @@ async function readJsonCookie<T>(name: string): Promise<T | null> {
 }
 
 async function writeJsonCookie(name: string, value: unknown) {
-  const jar = await cookies();
-  const payload = encodeURIComponent(JSON.stringify(value));
-  // cookies ~4kb — keep payload lean
-  if (payload.length > 3500) {
-    console.warn(`[demo] cookie ${name} too large (${payload.length})`);
+  try {
+    const jar = await cookies();
+    const payload = encodeURIComponent(JSON.stringify(value));
+    if (payload.length > 3500) {
+      console.warn(`[demo] cookie ${name} too large (${payload.length}), skipping`);
+      return;
+    }
+    jar.set(name, payload, {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 14,
+    });
+  } catch (error) {
+    // RSC render não permite set de cookie — ignora no demo
+    console.warn(`[demo] cookie write skipped for ${name}`, error);
   }
-  jar.set(name, payload, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 14,
-  });
 }
 
 async function readPersistedVisits(): Promise<Record<string, PersistedVisit>> {
