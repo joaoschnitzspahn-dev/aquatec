@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import SignatureCanvas from "react-signature-canvas";
 import { toast } from "sonner";
@@ -17,6 +17,7 @@ import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { Badge, Section } from "@/components/ui/misc";
 import { formatDateTime, minutesToLabel, whatsappUrl, googleMapsUrl, formatDistance } from "@/lib/utils";
 import { generateVisitPdf } from "@/lib/pdf/visit-report";
+import { getQuickGeo, warmGps } from "@/lib/geo";
 import type { getVisit } from "@/lib/data/actions";
 
 type VisitData = Awaited<ReturnType<typeof getVisit>>;
@@ -30,24 +31,20 @@ async function fileToDataUrl(file: File) {
   });
 }
 
-function getGeo(): Promise<{ latitude?: number; longitude?: number }> {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) return resolve({});
-    navigator.geolocation.getCurrentPosition(
-      (pos) =>
-        resolve({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-        }),
-      () => resolve({}),
-      { enableHighAccuracy: true, timeout: 8000 },
-    );
-  });
+async function getGeo(): Promise<{ latitude?: number; longitude?: number }> {
+  warmGps();
+  const geo = await getQuickGeo();
+  if (!geo) return {};
+  return { latitude: geo.latitude, longitude: geo.longitude };
 }
 
 export function VisitFlow({ data }: { data: VisitData }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    warmGps();
+  }, []);
   const [arrivalPhoto, setArrivalPhoto] = useState<string>("");
   const [finalPhoto, setFinalPhoto] = useState<string>("");
   const [companyConfirm, setCompanyConfirm] = useState<{

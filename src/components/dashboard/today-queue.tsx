@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Clock3, MapPin, Navigation } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock3, MapPin, Navigation } from "lucide-react";
 import { Badge, EmptyState, Section } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
+import { RouteMap } from "@/components/dashboard/route-map";
 import { STATUS_LABELS, type AppointmentStatus } from "@/lib/data/types";
+import { getQuickGeo, orderByNearestNeighbor, warmGps } from "@/lib/geo";
 import {
   distanceMeters,
   formatDateTime,
@@ -60,26 +62,20 @@ function writeStoredOrigin(lat: number, lng: number) {
   }
 }
 
-function getGeo(): Promise<{ lat?: number; lng?: number }> {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) return resolve({});
-    navigator.geolocation.getCurrentPosition(
-      (pos) =>
-        resolve({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        }),
-      () => resolve({}),
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
-    );
-  });
+function visitHref(a: TodayAppointmentItem) {
+  if (a.visit?.status === "STARTED" || a.visit?.status === "COMPLETED") {
+    return `/visits/${a.visit.id}`;
+  }
+  return `/visits/start/${a.id}`;
 }
 
 export function TodayQueue({
   appointments,
+  completed,
   lastKnown,
 }: {
   appointments: TodayAppointmentItem[];
+  completed: TodayAppointmentItem[];
   lastKnown?: { lat: number; lng: number } | null;
 }) {
   const [origin, setOrigin] = useState<Origin>(() =>
@@ -99,14 +95,19 @@ export function TodayQueue({
       if (stored) {
         setOrigin(stored);
         setLocating(false);
+        setGpsHint("Rota pelo mais próximo da sua posição.");
         return;
       }
     }
 
-    const geo = await getGeo();
-    if (geo.lat != null && geo.lng != null) {
-      writeStoredOrigin(geo.lat, geo.lng);
-      setOrigin({ lat: geo.lat, lng: geo.lng, source: "gps" });
+    const geo = await getQuickGeo({ force });
+    if (geo) {
+      writeStoredOrigin(geo.latitude, geo.longitude);
+      setOrigin({
+        lat: geo.latitude,
+        lng: geo.longitude,
+        source: "gps",
+      });
       setGpsHint("Rota pelo mais próximo da sua localização.");
     } else if (lastKnown) {
       setOrigin({ ...lastKnown, source: "last" });
@@ -119,39 +120,65 @@ export function TodayQueue({
   }
 
   useEffect(() => {
+    warmGps();
     void captureOrigin(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const ranked = useMemo(() => {
-    const withDistance = appointments.map((a) => {
-      let meters: number | null = null;
-      if (
-        origin.source !== "none" &&
-        a.client.latitude != null &&
-        a.client.longitude != null
-      ) {
-        meters = distanceMeters(
-          origin.lat,
-          origin.lng,
-          a.client.latitude,
-          a.client.longitude,
-        );
-      }
-      return { ...a, meters };
-    });
-
-    return withDistance.sort((a, b) => {
-      if (a.meters != null && b.meters != null) return a.meters - b.meters;
-      if (a.meters != null) return -1;
-      if (b.meters != null) return 1;
-      return (
-        new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
+    if (origin.source === "none") {
+      return [...appointments].sort(
+        (a, b) =>
+          new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
       );
+    }
+
+    const ordered = orderByNearestNeighbor(
+      { lat: origin.lat, lng: origin.lng },
+      appointments.map((a) => ({
+        ...a,
+        latitude: a.client.latitude,
+        longitude: a.client.longitude,
+      })),
+    );
+
+    return ordered.map((a) => {
+      const meters =
+        a.client.latitude != null && a.client.longitude != null
+          ? distanceMeters(
+              origin.lat,
+              origin.lng,
+              a.client.latitude,
+              a.client.longitude,
+            )
+          : null;
+      return { ...a, meters };
     });
   }, [appointments, origin]);
 
   const next = ranked[0] ?? null;
+
+  const routeStops = ranked
+    .filter((a) => a.client.latitude != null && a.client.longitude != null)
+    .map((a) => ({
+      id: a.id,
+      name: a.client.name,
+      lat: a.client.latitude!,
+      lng: a.client.longitude!,
+    }));
+
+  const doneStops = completed
+    .filter((a) => a.client.latitude != null && a.client.longitude != null)
+    .map((a) => ({
+      id: a.id,
+      name: a.client.name,
+      lat: a.client.latitude!,
+      lng: a.client.longitude!,
+      done: true as const,
+    }));
+
+  const mapOrigin =
+    origin.source !== "none" ? { lat: origin.lat, lng: origin.lng } : null;
 
   return (
     <div className="space-y-5">
@@ -179,14 +206,16 @@ export function TodayQueue({
         </div>
       </div>
 
+      <RouteMap
+        origin={mapOrigin}
+        routeStops={routeStops}
+        doneStops={doneStops}
+      />
+
       {next ? (
         <Section title="Próximo cliente">
           <Link
-            href={
-              next.visit?.status === "STARTED" || next.visit?.status === "COMPLETED"
-                ? `/visits/${next.visit.id}`
-                : `/visits/start/${next.id}`
-            }
+            href={visitHref(next)}
             className="relative z-10 block rounded-3xl border border-[var(--brand)]/40 bg-[var(--brand-soft)] p-4 transition active:scale-[0.99]"
           >
             <div className="flex items-start justify-between gap-3">
@@ -195,9 +224,9 @@ export function TodayQueue({
                 <p className="mt-1 flex items-center gap-1.5 text-sm text-[var(--muted)]">
                   <Clock3 className="h-4 w-4" />
                   {formatTime(next.scheduledAt)}
-                  {next.meters != null ? (
+                  {"meters" in next && next.meters != null ? (
                     <span className="text-[var(--brand)]">
-                      · {formatDistance(next.meters)}
+                      · {formatDistance(next.meters as number)}
                     </span>
                   ) : null}
                 </p>
@@ -218,27 +247,28 @@ export function TodayQueue({
         </Section>
       ) : null}
 
-      <Section title="Agendamentos de hoje">
+      <Section title="Rota de hoje">
         <div className="space-y-2">
-          {ranked.map((a) => (
+          {ranked.map((a, index) => (
             <Link
               key={a.id}
-              href={
-                a.visit?.status === "STARTED" || a.visit?.status === "COMPLETED"
-                  ? `/visits/${a.visit.id}`
-                  : `/visits/start/${a.id}`
-              }
+              href={visitHref(a)}
               className="relative z-10 block rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4 transition hover:border-[var(--brand)]/40 active:scale-[0.99]"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-semibold">{a.client.name}</p>
+                  <p className="font-semibold">
+                    <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--brand)] text-[10px] text-white">
+                      {index + 1}
+                    </span>
+                    {a.client.name}
+                  </p>
                   <p className="mt-1 text-sm text-[var(--muted)]">
                     {formatDateTime(a.scheduledAt)}
-                    {a.meters != null ? (
+                    {"meters" in a && a.meters != null ? (
                       <span className="text-[var(--brand)]">
                         {" "}
-                        · {formatDistance(a.meters)}
+                        · {formatDistance(a.meters as number)}
                       </span>
                     ) : null}
                   </p>
@@ -256,10 +286,43 @@ export function TodayQueue({
             </Link>
           ))}
           {ranked.length === 0 ? (
-            <EmptyState title="Nenhum atendimento pendente hoje" />
+            <EmptyState title="Nenhum atendimento na rota" />
           ) : null}
         </div>
       </Section>
+
+      {completed.length > 0 ? (
+        <Section title="Finalizados">
+          <div className="space-y-2">
+            {completed.map((a) => (
+              <Link
+                key={a.id}
+                href={visitHref(a)}
+                className="relative z-10 block rounded-3xl border border-emerald-500/35 bg-emerald-500/10 p-4 transition active:scale-[0.99]"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="flex items-center gap-2 font-semibold text-emerald-400">
+                      <CheckCircle2 className="h-4 w-4" />
+                      {a.client.name}
+                    </p>
+                    <p className="mt-1 text-sm text-[var(--muted)]">
+                      {formatDateTime(a.scheduledAt)}
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      {a.client.address}
+                    </p>
+                    <p className="mt-2 text-xs font-medium text-emerald-400">
+                      Fora da rota · ver resumo →
+                    </p>
+                  </div>
+                  <Badge tone="success">Concluído</Badge>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </Section>
+      ) : null}
     </div>
   );
 }
@@ -267,4 +330,12 @@ export function TodayQueue({
 /** Após concluir visita, atualiza a origem da jornada para a posição atual. */
 export function updateJourneyOrigin(lat: number, lng: number) {
   writeStoredOrigin(lat, lng);
+  try {
+    sessionStorage.setItem(
+      "aquatec_geo_cache",
+      JSON.stringify({ latitude: lat, longitude: lng, at: Date.now() }),
+    );
+  } catch {
+    /* ignore */
+  }
 }

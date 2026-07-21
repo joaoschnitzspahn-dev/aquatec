@@ -55,6 +55,21 @@ export default async function DashboardPage() {
               ? { id: a.visit.id, status: a.visit.status }
               : null,
           }))}
+          completed={data.completedAppointments.map((a) => ({
+            id: a.id,
+            scheduledAt: a.scheduledAt,
+            status: a.status,
+            client: {
+              id: a.client.id,
+              name: a.client.name,
+              address: a.client.address,
+              latitude: a.client.latitude,
+              longitude: a.client.longitude,
+            },
+            visit: a.visit
+              ? { id: a.visit.id, status: a.visit.status }
+              : null,
+          }))}
           lastKnown={data.lastKnown}
         />
 

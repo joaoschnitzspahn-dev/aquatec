@@ -91,6 +91,7 @@ export async function getDashboardData() {
   const pendingList = enriched.filter(
     (a) => a.status !== "COMPLETED" && a.status !== "CANCELLED",
   );
+  const completedAppointments = enriched.filter((a) => a.status === "COMPLETED");
   const next = pendingList.find(
     (a) => a.status === "SCHEDULED" || a.status === "IN_PROGRESS",
   );
@@ -157,6 +158,7 @@ export async function getDashboardData() {
     user,
     todayCount: enriched.length,
     pendingAppointments: pendingList,
+    completedAppointments,
     next,
     pending,
     lastKnown,

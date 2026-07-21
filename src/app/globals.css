@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
 
 :root {
   --brand: #2b8cff;
@@ -132,3 +133,15 @@ body {
 .animate-pulse-soft {
   animation: pulse-soft 2s ease-in-out infinite;
 }
+
+/* Leaflet pins — evita herdar estilos do app */
+.aquatec-map-pin {
+  background: transparent !important;
+  border: none !important;
+}
+
+.leaflet-container {
+  font: inherit;
+  background: var(--surface-2);
+}
+
