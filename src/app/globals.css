@@ -78,8 +78,11 @@ body {
 .app-shell {
   max-width: 480px;
   margin: 0 auto;
-  min-height: 100dvh;
   position: relative;
+}
+
+.app-shell-page {
+  min-height: 100dvh;
 }
 
 .glass {

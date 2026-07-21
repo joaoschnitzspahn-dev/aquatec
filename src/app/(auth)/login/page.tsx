@@ -15,13 +15,14 @@ export default function LoginPage() {
     <div className="app-shell flex min-h-dvh flex-col justify-center px-5">
       <div className="animate-fade-up space-y-8">
         <div className="text-center">
-          <div className="mx-auto mb-6 flex h-28 w-full max-w-[260px] items-center justify-center rounded-3xl bg-black px-4">
+          <div className="mx-auto mb-6 w-full max-w-[280px] overflow-hidden rounded-[28px] bg-black shadow-lg shadow-black/20">
             <Image
               src="/brand/aquatec-logo.png"
               alt="Aquatec"
-              width={240}
-              height={90}
-              className="h-auto w-full object-contain"
+              width={640}
+              height={640}
+              className="h-auto w-full object-contain object-center"
+              sizes="280px"
               priority
             />
           </div>

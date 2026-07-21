@@ -15,7 +15,7 @@ export default async function AppLayout({
   const unread = notifications.filter((n) => !n.read).length;
 
   return (
-    <div className="app-shell px-4 pb-28">
+    <div className="app-shell app-shell-page px-4 pb-28">
       <div data-unread={unread} className="contents">
         {children}
       </div>

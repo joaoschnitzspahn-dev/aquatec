@@ -404,16 +404,30 @@ export async function updateClientStock(formData: FormData) {
   return { ok: true };
 }
 
-export async function listAppointments(range: "today" | "week" | "month") {
+export async function listAppointments(
+  range: "today" | "week" | "month" | "calendar",
+  anchorIso?: string,
+) {
   const user = await requireUser();
   const store = getStore();
-  const now = new Date();
+  const now = anchorIso ? new Date(anchorIso) : new Date();
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
   const end = new Date(start);
-  if (range === "today") end.setDate(end.getDate() + 1);
-  if (range === "week") end.setDate(end.getDate() + 7);
-  if (range === "month") end.setMonth(end.getMonth() + 1);
+
+  if (range === "today") {
+    end.setDate(end.getDate() + 1);
+  } else if (range === "week") {
+    end.setDate(end.getDate() + 7);
+  } else if (range === "month") {
+    end.setMonth(end.getMonth() + 1);
+  } else {
+    // full calendar month around anchor
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+    end.setMonth(start.getMonth() + 1);
+    end.setDate(1);
+  }
 
   let list = store.appointments.filter((a) => {
     const d = new Date(a.scheduledAt);
