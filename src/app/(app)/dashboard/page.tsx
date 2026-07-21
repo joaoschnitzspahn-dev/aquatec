@@ -1,19 +1,14 @@
 import Link from "next/link";
-import { ArrowRight, Clock3, MapPin, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { TopBar } from "@/components/layout/top-bar";
-import { Badge, EmptyState, Section, StatPill } from "@/components/ui/misc";
+import { Badge, Section, StatPill } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
-import {
-  getDashboardData,
-  listAppointments,
-  listNotifications,
-} from "@/lib/data/actions";
-import { STATUS_LABELS } from "@/lib/data/types";
-import { formatCurrency, formatTime, minutesToLabel, formatDateTime } from "@/lib/utils";
+import { TodayQueue } from "@/components/dashboard/today-queue";
+import { getDashboardData, listNotifications } from "@/lib/data/actions";
+import { formatCurrency, formatTime, minutesToLabel } from "@/lib/utils";
 
 export default async function DashboardPage() {
   const data = await getDashboardData();
-  const todayAppointments = await listAppointments("today");
   const notifications = await listNotifications();
   const unread = notifications.filter((n) => !n.read).length;
 
@@ -44,64 +39,24 @@ export default async function DashboardPage() {
           />
         </div>
 
-        {data.next ? (
-          <Section title="Próximo cliente">
-            <Link
-              href={`/visits/start/${data.next.id}`}
-              className="relative z-10 block rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4 transition hover:border-[var(--brand)]/40 active:scale-[0.99]"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-lg font-semibold">{data.next.client.name}</p>
-                  <p className="mt-1 flex items-center gap-1.5 text-sm text-[var(--muted)]">
-                    <Clock3 className="h-4 w-4" />
-                    {formatTime(data.next.scheduledAt)}
-                  </p>
-                  <p className="mt-1 flex items-start gap-1.5 text-sm text-[var(--muted)]">
-                    <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
-                    {data.next.client.address}
-                  </p>
-                </div>
-                <Badge tone="brand">Abrir</Badge>
-              </div>
-              <div className="mt-4 flex items-center justify-between text-sm text-[var(--brand)]">
-                Iniciar atendimento
-                <ArrowRight className="h-4 w-4" />
-              </div>
-            </Link>
-          </Section>
-        ) : null}
-
-        <Section title="Agendamentos de hoje">
-          <div className="space-y-2">
-            {todayAppointments.map((a) => (
-              <Link
-                key={a.id}
-                href={a.visit ? `/visits/${a.visit.id}` : `/visits/start/${a.id}`}
-                className="relative z-10 block rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4 transition hover:border-[var(--brand)]/40 active:scale-[0.99]"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold">{a.client.name}</p>
-                    <p className="mt-1 text-sm text-[var(--muted)]">
-                      {formatDateTime(a.scheduledAt)}
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">
-                      {a.client.address}
-                    </p>
-                    <p className="mt-2 text-xs font-medium text-[var(--brand)]">
-                      Toque para abrir →
-                    </p>
-                  </div>
-                  <Badge tone="brand">{STATUS_LABELS[a.status]}</Badge>
-                </div>
-              </Link>
-            ))}
-            {todayAppointments.length === 0 ? (
-              <EmptyState title="Nenhum atendimento hoje" />
-            ) : null}
-          </div>
-        </Section>
+        <TodayQueue
+          appointments={data.pendingAppointments.map((a) => ({
+            id: a.id,
+            scheduledAt: a.scheduledAt,
+            status: a.status,
+            client: {
+              id: a.client.id,
+              name: a.client.name,
+              address: a.client.address,
+              latitude: a.client.latitude,
+              longitude: a.client.longitude,
+            },
+            visit: a.visit
+              ? { id: a.visit.id, status: a.visit.status }
+              : null,
+          }))}
+          lastKnown={data.lastKnown}
+        />
 
         {data.alerts.length > 0 ? (
           <Section

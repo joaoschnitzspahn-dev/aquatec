@@ -205,6 +205,12 @@ export function VisitFlow({ data }: { data: VisitData }) {
                         toast.error(res.error);
                         return;
                       }
+                      if (geo.latitude != null && geo.longitude != null) {
+                        const { updateJourneyOrigin } = await import(
+                          "@/components/dashboard/today-queue"
+                        );
+                        updateJourneyOrigin(geo.latitude, geo.longitude);
+                      }
                       if (res.locationMismatch) {
                         toast.warning(
                           `GPS divergente (${formatDistance(res.distanceMeters || 0)}). Atendimento liberado — Master verá a coordenada.`,
@@ -515,8 +521,15 @@ export function VisitFlow({ data }: { data: VisitData }) {
                         const res = await finishVisit(fd);
                         if (res.error) toast.error(res.error);
                         else {
+                          if (geo.latitude != null && geo.longitude != null) {
+                            const { updateJourneyOrigin } = await import(
+                              "@/components/dashboard/today-queue"
+                            );
+                            updateJourneyOrigin(geo.latitude, geo.longitude);
+                          }
                           toast.success("Atendimento finalizado");
                           router.refresh();
+                          router.push("/dashboard");
                         }
                       });
                     }}

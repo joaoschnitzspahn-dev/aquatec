@@ -81,19 +81,51 @@ export async function getDashboardData() {
       ...a,
       client: store.clients.find((c) => c.id === a.clientId)!,
       employee: store.users.find((u) => u.id === a.employeeId)!,
+      visit: store.visits.find((v) => v.appointmentId === a.id),
     }))
     .sort(
       (a, b) =>
         new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
     );
 
-  const next = enriched.find((a) => a.status === "SCHEDULED");
-  const pending = enriched.filter((a) => a.status === "SCHEDULED").length;
+  const pendingList = enriched.filter(
+    (a) => a.status !== "COMPLETED" && a.status !== "CANCELLED",
+  );
+  const next = pendingList.find(
+    (a) => a.status === "SCHEDULED" || a.status === "IN_PROGRESS",
+  );
+  const pending = pendingList.filter(
+    (a) => a.status === "SCHEDULED" || a.status === "IN_PROGRESS",
+  ).length;
   const completedToday = store.visits.filter((v) => {
     if (v.status !== "COMPLETED" || !v.finishedAt) return false;
     const d = new Date(v.finishedAt);
     return d >= today && d < tomorrow && v.companyId === user.companyId;
   });
+
+  const lastVisitWithGps = [...store.visits]
+    .filter((v) => {
+      if (v.companyId !== user.companyId) return false;
+      if (user.role === "EMPLOYEE" && v.employeeId !== user.id) return false;
+      const lat = v.endLatitude ?? v.startLatitude;
+      const lng = v.endLongitude ?? v.startLongitude;
+      return lat != null && lng != null;
+    })
+    .sort(
+      (a, b) =>
+        new Date(b.finishedAt || b.startedAt || b.createdAt).getTime() -
+        new Date(a.finishedAt || a.startedAt || a.createdAt).getTime(),
+    )[0];
+  const lastKnown =
+    lastVisitWithGps &&
+    (lastVisitWithGps.endLatitude ?? lastVisitWithGps.startLatitude) != null
+      ? {
+          lat: (lastVisitWithGps.endLatitude ??
+            lastVisitWithGps.startLatitude) as number,
+          lng: (lastVisitWithGps.endLongitude ??
+            lastVisitWithGps.startLongitude) as number,
+        }
+      : null;
 
   const durations = store.visits
     .filter((v) => v.durationMinutes && v.companyId === user.companyId)
@@ -124,8 +156,10 @@ export async function getDashboardData() {
   return {
     user,
     todayCount: enriched.length,
+    pendingAppointments: pendingList,
     next,
     pending,
+    lastKnown,
     avgTime,
     alerts,
     master: can(user, "reports:read")
@@ -433,7 +467,8 @@ export async function listAppointments(
   anchorIso?: string,
 ) {
   const user = await requireUser();
-  const store = getStore();
+  const { hydrateDemoStore } = await import("./persist");
+  const store = await hydrateDemoStore();
   const now = anchorIso ? new Date(anchorIso) : new Date();
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
