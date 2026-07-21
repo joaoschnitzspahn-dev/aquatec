@@ -184,7 +184,8 @@ export interface ChecklistResponse {
 
 export interface WaterReading {
   id: string;
-  visitId: string;
+  visitId?: string;
+  clientId?: string;
   ph?: number;
   chlorine?: number;
   alkalinity?: number;

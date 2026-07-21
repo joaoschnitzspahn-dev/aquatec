@@ -236,7 +236,11 @@ export async function getClient(clientId: string) {
     equipment,
     photos,
     readings: store.readings
-      .filter((r) => visits.some((v) => v.id === r.visitId))
+      .filter(
+        (r) =>
+          r.clientId === clientId ||
+          visits.some((v) => v.id === r.visitId),
+      )
       .sort(
         (a, b) =>
           new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime(),
@@ -473,7 +477,8 @@ export async function listAppointments(
 export async function upsertAppointment(formData: FormData) {
   const user = await requireUser();
   assertCan(user, "schedule:write");
-  const store = getStore();
+  const { hydrateDemoStore, persistClientsAndStock } = await import("./persist");
+  const store = await hydrateDemoStore();
   const appointmentId = String(formData.get("id") || "");
   const payload = {
     clientId: String(formData.get("clientId")),
@@ -503,7 +508,89 @@ export async function upsertAppointment(formData: FormData) {
     );
     audit(user.companyId, user.id, "CREATE", "Appointment", newId);
   }
+  await persistClientsAndStock(store);
   revalidatePath("/schedule");
+  revalidatePath(`/clients/${payload.clientId}`);
+  return { ok: true };
+}
+
+export async function upsertEquipment(formData: FormData) {
+  const user = await requireUser();
+  assertCan(user, "clients:write");
+  const { hydrateDemoStore, persistClientsAndStock } = await import("./persist");
+  const store = await hydrateDemoStore();
+  const equipmentId = String(formData.get("id") || "");
+  const clientId = String(formData.get("clientId"));
+  const payload = {
+    clientId,
+    type: String(formData.get("type") || "OTHER") as import("./types").EquipmentType,
+    brand: String(formData.get("brand") || "") || undefined,
+    model: String(formData.get("model") || "") || undefined,
+    serialNumber: String(formData.get("serialNumber") || "") || undefined,
+    notes: String(formData.get("notes") || "") || undefined,
+  };
+
+  if (equipmentId) {
+    const idx = store.equipment.findIndex((e) => e.id === equipmentId);
+    if (idx >= 0) {
+      store.equipment[idx] = {
+        ...store.equipment[idx],
+        ...payload,
+      };
+    }
+  } else {
+    store.equipment.push({
+      id: id(),
+      maintenances: [],
+      ...payload,
+    });
+  }
+
+  await persistClientsAndStock(store);
+  revalidatePath(`/clients/${clientId}`);
+  return { ok: true };
+}
+
+export async function deleteEquipment(equipmentId: string, clientId: string) {
+  const user = await requireUser();
+  assertCan(user, "clients:write");
+  const { hydrateDemoStore, persistClientsAndStock, markEquipmentDeleted } =
+    await import("./persist");
+  const store = await hydrateDemoStore();
+  store.equipment = store.equipment.filter((e) => e.id !== equipmentId);
+  await markEquipmentDeleted(equipmentId);
+  await persistClientsAndStock(store);
+  revalidatePath(`/clients/${clientId}`);
+  return { ok: true };
+}
+
+export async function addClientWaterReading(formData: FormData) {
+  const user = await requireUser();
+  assertCan(user, "clients:write");
+  const { hydrateDemoStore, persistClientsAndStock } = await import("./persist");
+  const store = await hydrateDemoStore();
+  const clientId = String(formData.get("clientId"));
+
+  store.readings.push({
+    id: id(),
+    clientId,
+    ph: formData.get("ph") ? Number(formData.get("ph")) : undefined,
+    chlorine: formData.get("chlorine")
+      ? Number(formData.get("chlorine"))
+      : undefined,
+    alkalinity: formData.get("alkalinity")
+      ? Number(formData.get("alkalinity"))
+      : undefined,
+    temperature: formData.get("temperature")
+      ? Number(formData.get("temperature"))
+      : undefined,
+    notes: String(formData.get("notes") || "") || undefined,
+    recordedAt: new Date().toISOString(),
+  });
+
+  await persistClientsAndStock(store);
+  audit(user.companyId, user.id, "CREATE", "WaterReading", clientId);
+  revalidatePath(`/clients/${clientId}`);
   return { ok: true };
 }
 

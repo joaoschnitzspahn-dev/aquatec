@@ -24,7 +24,10 @@ import {
 } from "@/lib/utils";
 import { ClientQr } from "@/components/clients/client-qr";
 import { WaterChart } from "@/components/clients/water-chart";
-import { ClientStockForm } from "@/components/clients/client-stock-form";
+import {
+  DeleteEquipmentButton,
+  MasterClientEditors,
+} from "@/components/clients/master-client-editors";
 import { DeleteClientButton } from "@/components/clients/delete-client-button";
 
 export default async function ClientDetailPage({
@@ -44,7 +47,7 @@ export default async function ClientDetailPage({
 
   const notifications = await listNotifications();
   const unread = notifications.filter((n) => !n.read).length;
-  const { client, stock, visits, appointments, equipment, readings, products, user } =
+  const { client, stock, visits, appointments, equipment, readings, products, user, employees } =
     data;
 
   const maps =
@@ -150,32 +153,36 @@ export default async function ClientDetailPage({
               <EmptyState title="Sem estoque cadastrado" />
             ) : null}
           </div>
-          {user.role === "MASTER" ? (
-            <div className="mt-3">
-              <ClientStockForm
-                clientId={client.id}
-                products={products.map((p) => ({
-                  id: p.id,
-                  name: p.name,
-                  unit: p.unit,
-                }))}
-              />
-            </div>
-          ) : null}
         </Section>
 
         <Section title="Leituras da água">
           {readings.length > 0 ? (
-            <WaterChart
-              data={readings.map((r) => ({
-                date: new Date(r.recordedAt).toLocaleDateString("pt-BR", {
-                  day: "2-digit",
-                  month: "2-digit",
-                }),
-                ph: r.ph,
-                chlorine: r.chlorine,
-              }))}
-            />
+            <div className="space-y-3">
+              <WaterChart
+                data={readings.map((r) => ({
+                  date: new Date(r.recordedAt).toLocaleDateString("pt-BR", {
+                    day: "2-digit",
+                    month: "2-digit",
+                  }),
+                  ph: r.ph,
+                  chlorine: r.chlorine,
+                }))}
+              />
+              <div className="space-y-2">
+                {[...readings].reverse().slice(0, 5).map((r) => (
+                  <div
+                    key={r.id}
+                    className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--muted)]"
+                  >
+                    {formatDateTime(r.recordedAt)}
+                    {r.ph != null ? ` · pH ${r.ph}` : ""}
+                    {r.chlorine != null ? ` · Cloro ${r.chlorine}` : ""}
+                    {r.alkalinity != null ? ` · Alc. ${r.alkalinity}` : ""}
+                    {r.temperature != null ? ` · ${r.temperature}°C` : ""}
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : (
             <EmptyState title="Sem leituras ainda" />
           )}
@@ -188,18 +195,28 @@ export default async function ClientDetailPage({
                 key={eq.id}
                 className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3"
               >
-                <div className="flex items-center gap-2">
-                  <Waves className="h-4 w-4 text-[var(--brand)]" />
-                  <p className="font-medium">{EQUIPMENT_LABELS[eq.type]}</p>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Waves className="h-4 w-4 text-[var(--brand)]" />
+                      <p className="font-medium">{EQUIPMENT_LABELS[eq.type]}</p>
+                    </div>
+                    <p className="mt-1 text-sm text-[var(--muted)]">
+                      {[eq.brand, eq.model].filter(Boolean).join(" · ") || "—"}
+                    </p>
+                    {eq.maintenances[0] ? (
+                      <p className="mt-1 text-xs text-[var(--muted)]">
+                        Última manutenção: {eq.maintenances[0].description}
+                      </p>
+                    ) : null}
+                  </div>
+                  {user.role === "MASTER" ? (
+                    <DeleteEquipmentButton
+                      equipmentId={eq.id}
+                      clientId={client.id}
+                    />
+                  ) : null}
                 </div>
-                <p className="mt-1 text-sm text-[var(--muted)]">
-                  {[eq.brand, eq.model].filter(Boolean).join(" · ") || "—"}
-                </p>
-                {eq.maintenances[0] ? (
-                  <p className="mt-1 text-xs text-[var(--muted)]">
-                    Última manutenção: {eq.maintenances[0].description}
-                  </p>
-                ) : null}
               </div>
             ))}
             {equipment.length === 0 ? (
@@ -214,16 +231,38 @@ export default async function ClientDetailPage({
           ) : (
             <div className="space-y-2">
               {appointments.map((a) => (
-                <div
+                <Link
                   key={a.id}
-                  className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 text-sm"
+                  href={`/visits/start/${a.id}`}
+                  className="block rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 text-sm transition hover:border-[var(--brand)]/40"
                 >
                   {formatDateTime(a.scheduledAt)}
-                </div>
+                  <span className="mt-1 block text-xs text-[var(--brand)]">
+                    Toque para abrir →
+                  </span>
+                </Link>
               ))}
             </div>
           )}
         </Section>
+
+        {user.role === "MASTER" ? (
+          <MasterClientEditors
+            clientId={client.id}
+            products={products.map((p) => ({
+              id: p.id,
+              name: p.name,
+              unit: p.unit,
+            }))}
+            employees={employees.map((e) => ({ id: e.id, name: e.name }))}
+            stock={stock.map((s) => ({
+              productId: s.productId,
+              quantity: s.quantity,
+              minQuantity: s.minQuantity,
+              product: { name: s.product.name },
+            }))}
+          />
+        ) : null}
 
         <Section title="Histórico">
           <div className="space-y-2">

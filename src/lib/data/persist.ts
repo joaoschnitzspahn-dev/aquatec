@@ -1,11 +1,14 @@
 import { cookies } from "next/headers";
 import type {
+  Appointment,
   Client,
   ClientStockItem,
   DemoStore,
+  Equipment,
   Product,
   ServiceVisit,
   VisitStatus,
+  WaterReading,
 } from "./types";
 import { getStore } from "./store";
 
@@ -40,8 +43,12 @@ type DemoDataBlob = {
   clients?: Client[];
   products?: Product[];
   clientStock?: ClientStockItem[];
+  equipment?: Equipment[];
+  readings?: WaterReading[];
+  appointments?: Appointment[];
   deletedClientIds?: string[];
   deletedProductIds?: string[];
+  deletedEquipmentIds?: string[];
 };
 
 function visitIdForAppointment(appointmentId: string) {
@@ -147,6 +154,35 @@ export async function hydrateDemoStore(): Promise<DemoStore> {
     }
   }
 
+  if (data.deletedEquipmentIds?.length) {
+    store.equipment = store.equipment.filter(
+      (e) => !data.deletedEquipmentIds!.includes(e.id),
+    );
+  }
+  if (data.equipment?.length) {
+    for (const item of data.equipment) {
+      const idx = store.equipment.findIndex((e) => e.id === item.id);
+      if (idx >= 0) store.equipment[idx] = item;
+      else store.equipment.push(item);
+    }
+  }
+
+  if (data.readings?.length) {
+    for (const item of data.readings) {
+      const idx = store.readings.findIndex((r) => r.id === item.id);
+      if (idx >= 0) store.readings[idx] = item;
+      else store.readings.push(item);
+    }
+  }
+
+  if (data.appointments?.length) {
+    for (const item of data.appointments) {
+      const idx = store.appointments.findIndex((a) => a.id === item.id);
+      if (idx >= 0) store.appointments[idx] = item;
+      else store.appointments.push(item);
+    }
+  }
+
   for (const saved of Object.values(visits)) {
     const idx = store.visits.findIndex((v) => v.id === saved.id);
     if (idx >= 0) {
@@ -183,6 +219,18 @@ export async function persistClientsAndStock(store: DemoStore) {
   data.clients = store.clients;
   data.clientStock = store.clientStock;
   data.products = store.products;
+  data.equipment = store.equipment;
+  data.readings = store.readings;
+  data.appointments = store.appointments;
+  await writeDemoData(data);
+}
+
+export async function markEquipmentDeleted(equipmentId: string) {
+  const data = await readDemoData();
+  data.deletedEquipmentIds = Array.from(
+    new Set([...(data.deletedEquipmentIds || []), equipmentId]),
+  );
+  data.equipment = (data.equipment || []).filter((e) => e.id !== equipmentId);
   await writeDemoData(data);
 }
 
