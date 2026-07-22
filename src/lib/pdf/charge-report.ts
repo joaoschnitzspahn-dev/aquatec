@@ -26,7 +26,23 @@ function timeBr(value: string) {
   });
 }
 
-export function generateChargePdf(input: {
+async function loadLogoDataUrl() {
+  try {
+    const res = await fetch("/aquatec-logo.png");
+    if (!res.ok) return undefined;
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+export async function generateChargePdf(input: {
   clientName: string;
   employeeName: string;
   issuedAt: string;
@@ -34,6 +50,7 @@ export function generateChargePdf(input: {
   total: number;
   pixPayload?: string;
   qrDataUrl?: string;
+  logoDataUrl?: string;
   items: {
     name: string;
     quantity: number;
@@ -47,22 +64,47 @@ export function generateChargePdf(input: {
   const pageW = doc.internal.pageSize.getWidth();
   const margin = 14;
   const contentW = pageW - margin * 2;
-  let y = 16;
+  let y = 12;
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.setTextColor(15, 90, 140);
-  doc.text("AQUATEC", margin, y);
-  y += 8;
+  const logoDataUrl = input.logoDataUrl || (await loadLogoDataUrl());
+  if (logoDataUrl) {
+    const logoW = 58;
+    const logoH = 28;
+    const logoX = (pageW - logoW) / 2;
+    try {
+      doc.addImage(logoDataUrl, "PNG", logoX, y, logoW, logoH);
+      y += logoH + 4;
+    } catch {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(18);
+      doc.setTextColor(15, 90, 140);
+      doc.text("AQUATEC", pageW / 2, y + 8, { align: "center" });
+      y += 14;
+    }
+  } else {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(15, 90, 140);
+    doc.text("AQUATEC", pageW / 2, y + 8, { align: "center" });
+    y += 14;
+  }
 
   doc.setTextColor(30, 30, 30);
-  doc.setFontSize(13);
-  doc.text("RELATÓRIO DE PRODUTOS E SERVIÇOS", margin, y);
-  y += 6;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text("RELATÓRIO DE PRODUTOS E SERVIÇOS", pageW / 2, y, {
+    align: "center",
+  });
+  y += 5;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(90, 90, 90);
-  doc.text("Demonstrativo Geral e Atual de Produtos e Serviços", margin, y);
+  doc.text(
+    "Demonstrativo Geral e Atual de Produtos e Serviços",
+    pageW / 2,
+    y,
+    { align: "center" },
+  );
   y += 8;
 
   doc.setDrawColor(200, 210, 220);

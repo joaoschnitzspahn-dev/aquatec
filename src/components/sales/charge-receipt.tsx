@@ -53,7 +53,7 @@ export function ChargeReceipt({ sale }: { sale: ChargeSale }) {
     setPdfBusy(true);
     try {
       const qrDataUrl = qrRef.current?.toDataURL("image/png");
-      generateChargePdf({
+      await generateChargePdf({
         clientName,
         employeeName: sale.employee.name,
         issuedAt: sale.date,
@@ -73,8 +73,14 @@ export function ChargeReceipt({ sale }: { sale: ChargeSale }) {
 
   return (
     <div className="space-y-4 animate-fade-up">
-      <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4">
-        <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+      <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4 text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/aquatec-logo.png"
+          alt="Aquatec"
+          className="mx-auto h-16 w-auto object-contain"
+        />
+        <p className="mt-3 text-xs uppercase tracking-wide text-[var(--muted)]">
           Relatório de produtos e serviços
         </p>
         <p className="mt-1 text-lg font-semibold">{clientName}</p>
@@ -173,32 +179,31 @@ export function ChargeReceipt({ sale }: { sale: ChargeSale }) {
             <div className="mt-3 break-all rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-3 text-[10px] leading-relaxed text-[var(--muted)]">
               {pix}
             </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <Button
-                type="button"
-                className="w-full"
-                onClick={() => void copyPix()}
-              >
-                {copied ? (
-                  <Check className="h-4 w-4" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-                {copied
-                  ? "Código copiado"
-                  : `Copiar PIX · ${formatCurrency(sale.total)}`}
-              </Button>
-              <Button
-                type="button"
-                className="w-full"
-                variant="outline"
-                disabled={pdfBusy}
-                onClick={() => void downloadPdf()}
-              >
-                <FileDown className="h-4 w-4" />
-                {pdfBusy ? "Gerando PDF…" : "Baixar PDF da cobrança"}
-              </Button>
-            </div>
+            <Button
+              type="button"
+              className="mt-3 w-full"
+              size="lg"
+              onClick={() => void copyPix()}
+            >
+              {copied ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+              {copied
+                ? "Código PIX copiado!"
+                : `Copiar PIX Copia e Cola · ${formatCurrency(sale.total)}`}
+            </Button>
+            <Button
+              type="button"
+              className="mt-2 w-full"
+              variant="outline"
+              disabled={pdfBusy}
+              onClick={() => void downloadPdf()}
+            >
+              <FileDown className="h-4 w-4" />
+              {pdfBusy ? "Gerando PDF…" : "Baixar PDF com logo para enviar"}
+            </Button>
           </>
         ) : (
           <Button
