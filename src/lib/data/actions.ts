@@ -497,8 +497,13 @@ export async function upsertClient(formData: FormData) {
   const user = await requireUser();
   assertCan(user, "clients:write");
   const { hydrateDemoStore, persistClientsAndStock } = await import("./persist");
+  const { generateServiceDates } = await import("./schedule");
   const store = await hydrateDemoStore();
   const clientId = String(formData.get("id") || "");
+  const serviceFrequency = String(
+    formData.get("serviceFrequency") || "WEEKLY_1",
+  ) as import("./types").ServiceFrequency;
+  const autoSchedule = String(formData.get("autoSchedule") || "") === "on";
   const payload = {
     name: String(formData.get("name") || ""),
     phone: String(formData.get("phone") || "") || undefined,
@@ -518,6 +523,7 @@ export async function upsertClient(formData: FormData) {
     volumeLiters: formData.get("volumeLiters")
       ? Number(formData.get("volumeLiters"))
       : undefined,
+    serviceFrequency,
     serviceDays: String(formData.get("serviceDays") || "")
       .split(",")
       .map((s) => s.trim())
@@ -546,9 +552,59 @@ export async function upsertClient(formData: FormData) {
     audit(user.companyId, user.id, "CREATE", "Client", savedId, payload);
   }
 
+  if (autoSchedule && payload.responsibleId && payload.status === "ACTIVE") {
+    const now = new Date();
+    // Remove futuros SCHEDULED deste cliente para regenerar
+    store.appointments = store.appointments.filter((a) => {
+      if (a.clientId !== savedId) return true;
+      if (a.status !== "SCHEDULED") return true;
+      return new Date(a.scheduledAt) < now;
+    });
+
+    const dates = generateServiceDates({
+      frequency: serviceFrequency,
+      serviceDays: payload.serviceDays,
+      serviceTime: payload.serviceTime,
+    });
+
+    for (const date of dates) {
+      const newId = id();
+      store.appointments.push({
+        id: newId,
+        companyId: user.companyId,
+        clientId: savedId,
+        employeeId: payload.responsibleId,
+        scheduledAt: date.toISOString(),
+        status: "SCHEDULED",
+        notes: `Auto · ${serviceFrequency}`,
+      });
+    }
+
+    store.reminders = store.reminders.filter((r) => r.clientId !== savedId);
+    const frequencyDays =
+      serviceFrequency === "WEEKLY_1"
+        ? 7
+        : serviceFrequency === "WEEKLY_2"
+          ? 3
+          : serviceFrequency === "BIWEEKLY"
+            ? 15
+            : 30;
+    store.reminders.push({
+      id: id(),
+      companyId: user.companyId,
+      clientId: savedId,
+      title: `Manutenção automática`,
+      frequencyDays,
+      nextRunAt: dates[0]?.toISOString() || new Date().toISOString(),
+      active: true,
+    });
+  }
+
   await persistClientsAndStock(store);
   revalidatePath("/clients");
   revalidatePath(`/clients/${savedId}`);
+  revalidatePath("/schedule");
+  revalidatePath("/dashboard");
   return { ok: true, id: savedId };
 }
 

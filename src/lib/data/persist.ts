@@ -15,7 +15,7 @@ import { getStore } from "./store";
 export const DEMO_VISITS_COOKIE = "aquatec_demo_visits";
 export const DEMO_DATA_COOKIE = "aquatec_demo_data";
 /** Bump quando o seed mudar — descarta overlays antigos do cookie. */
-export const DEMO_SEED_VERSION = "sc-penha-picarras-v1";
+export const DEMO_SEED_VERSION = "sc-penha-emp2-freq-v1";
 
 export type PersistedVisit = {
   id: string;

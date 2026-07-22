@@ -87,6 +87,7 @@ export default function LoginPage() {
             <p className="font-semibold text-[var(--foreground)]">Demo</p>
             <p>master@aquatec.com / aquatec123</p>
             <p>funcionario@aquatec.com / aquatec123</p>
+            <p>funcionario2@aquatec.com / aquatec123</p>
           </div>
         </div>
       </div>

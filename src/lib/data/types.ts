@@ -1,6 +1,11 @@
 export type Role = "MASTER" | "EMPLOYEE" | "CUSTOM";
 export type ClientStatus = "ACTIVE" | "INACTIVE";
 export type PoolType = "FIBRA" | "VINIL" | "ALVENARIA";
+export type ServiceFrequency =
+  | "WEEKLY_1"
+  | "WEEKLY_2"
+  | "BIWEEKLY"
+  | "MONTHLY";
 export type AppointmentStatus =
   | "SCHEDULED"
   | "IN_PROGRESS"
@@ -99,6 +104,7 @@ export interface Client {
   photoUrl?: string;
   poolType: PoolType;
   volumeLiters?: number;
+  serviceFrequency?: ServiceFrequency;
   serviceDays: string[];
   serviceTime?: string;
   responsibleId?: string;
@@ -345,6 +351,13 @@ export const POOL_TYPE_LABELS: Record<PoolType, string> = {
   FIBRA: "Fibra",
   VINIL: "Vinil",
   ALVENARIA: "Alvenaria",
+};
+
+export const SERVICE_FREQUENCY_LABELS: Record<ServiceFrequency, string> = {
+  WEEKLY_1: "1x por semana",
+  WEEKLY_2: "2x por semana",
+  BIWEEKLY: "A cada 15 dias",
+  MONTHLY: "1x por mês",
 };
 
 export const EQUIPMENT_LABELS: Record<EquipmentType, string> = {
