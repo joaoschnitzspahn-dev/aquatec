@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
-import { Check, Copy } from "lucide-react";
+import { useRef, useState } from "react";
+import { QRCodeCanvas } from "qrcode.react";
+import { Check, Copy, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { AQUATEC_PIX } from "@/lib/pix";
+import { generateChargePdf } from "@/lib/pdf/charge-report";
 import { Button } from "@/components/ui/button";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime, formatTime } from "@/lib/utils";
 
 type ChargeSale = {
   id: string;
@@ -30,16 +31,43 @@ type ChargeSale = {
 
 export function ChargeReceipt({ sale }: { sale: ChargeSale }) {
   const [copied, setCopied] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const qrRef = useRef<HTMLCanvasElement>(null);
   const pix = sale.pixPayload || "";
+  const clientName = sale.client?.name || "Cliente avulso";
+  const due = sale.dueDate ? formatDate(sale.dueDate) : formatDate(sale.date);
 
   async function copyPix() {
+    if (!pix) return;
     try {
       await navigator.clipboard.writeText(pix);
       setCopied(true);
-      toast.success("PIX copiado");
+      toast.success(`PIX copiado · ${formatCurrency(sale.total)}`);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       toast.error("Não foi possível copiar");
+    }
+  }
+
+  async function downloadPdf() {
+    setPdfBusy(true);
+    try {
+      const qrDataUrl = qrRef.current?.toDataURL("image/png");
+      generateChargePdf({
+        clientName,
+        employeeName: sale.employee.name,
+        issuedAt: sale.date,
+        dueDate: sale.dueDate || sale.date,
+        total: sale.total,
+        pixPayload: pix || undefined,
+        qrDataUrl,
+        items: sale.items,
+      });
+      toast.success("PDF gerado");
+    } catch {
+      toast.error("Não foi possível gerar o PDF");
+    } finally {
+      setPdfBusy(false);
     }
   }
 
@@ -49,39 +77,60 @@ export function ChargeReceipt({ sale }: { sale: ChargeSale }) {
         <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
           Relatório de produtos e serviços
         </p>
-        <p className="mt-1 text-lg font-semibold">
-          {sale.client?.name || "Cliente avulso"}
-        </p>
+        <p className="mt-1 text-lg font-semibold">{clientName}</p>
         <p className="mt-1 text-xs text-[var(--muted)]">
-          Emissão {formatDateTime(sale.date)} · por {sale.employee.name}
+          Data de emissão {formatDate(sale.date)} · Hora {formatTime(sale.date)}{" "}
+          · Emitido por {sale.employee.name}
+        </p>
+        <p className="mt-1 text-[11px] text-[var(--muted)]">
+          Demonstrativo geral e atual de produtos e serviços
         </p>
       </div>
 
       <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-[var(--surface)]">
-        <div className="border-b border-[var(--border)] px-4 py-3 text-sm font-semibold">
-          Itens
+        <div className="grid grid-cols-[1.4fr_0.7fr_0.8fr] gap-2 border-b border-[var(--border)] bg-[var(--brand)] px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-white sm:grid-cols-[1.6fr_0.5fr_0.5fr_0.7fr_0.7fr_0.7fr]">
+          <span>Produto</span>
+          <span className="hidden sm:inline">Tipo</span>
+          <span>Qtd</span>
+          <span className="hidden sm:inline">Entrega</span>
+          <span className="hidden text-right sm:inline">Unit.</span>
+          <span className="text-right">Total</span>
         </div>
         <div className="divide-y divide-[var(--border)]">
           {sale.items.map((it, i) => (
-            <div key={`${it.name}-${i}`} className="px-4 py-3 text-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium">{it.name}</p>
-                  <p className="mt-1 text-xs text-[var(--muted)]">
-                    {it.quantity} {it.unit || "un"} ·{" "}
-                    {formatCurrency(it.unitPrice)}
-                    {it.deliveredAt
-                      ? ` · ${formatDate(it.deliveredAt)}`
-                      : ""}
-                  </p>
-                </div>
-                <p className="font-semibold">{formatCurrency(it.total)}</p>
+            <div
+              key={`${it.name}-${i}`}
+              className="grid grid-cols-[1.4fr_0.7fr_0.8fr] gap-2 px-3 py-3 text-sm sm:grid-cols-[1.6fr_0.5fr_0.5fr_0.7fr_0.7fr_0.7fr]"
+            >
+              <div>
+                <p className="font-medium leading-snug">{it.name}</p>
+                <p className="mt-0.5 text-[10px] text-[var(--muted)] sm:hidden">
+                  {it.unit || "un"} · {formatCurrency(it.unitPrice)} ·{" "}
+                  {it.deliveredAt
+                    ? formatDate(it.deliveredAt)
+                    : formatDate(sale.date)}
+                </p>
               </div>
+              <span className="hidden text-xs text-[var(--muted)] sm:inline">
+                {it.unit || "un"}
+              </span>
+              <span className="text-xs">{it.quantity}</span>
+              <span className="hidden text-xs text-[var(--muted)] sm:inline">
+                {it.deliveredAt
+                  ? formatDate(it.deliveredAt)
+                  : formatDate(sale.date)}
+              </span>
+              <span className="hidden text-right text-xs sm:inline">
+                {formatCurrency(it.unitPrice)}
+              </span>
+              <span className="text-right font-semibold">
+                {formatCurrency(it.total)}
+              </span>
             </div>
           ))}
         </div>
         <div className="flex items-center justify-between border-t border-[var(--border)] bg-[var(--brand-soft)] px-4 py-3">
-          <span className="text-sm font-medium">Total a pagar</span>
+          <span className="text-sm font-medium">Total à pagar</span>
           <span className="text-lg font-semibold text-[var(--brand)]">
             {formatCurrency(sale.total)}
           </span>
@@ -89,7 +138,9 @@ export function ChargeReceipt({ sale }: { sale: ChargeSale }) {
       </div>
 
       <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-4">
-        <p className="text-sm font-semibold">Pagamento via PIX</p>
+        <p className="text-sm font-semibold uppercase tracking-wide">
+          Pagamento via PIX
+        </p>
         <div className="mt-3 space-y-1 text-sm">
           <p>
             <span className="text-[var(--muted)]">Chave PIX </span>
@@ -101,43 +152,72 @@ export function ChargeReceipt({ sale }: { sale: ChargeSale }) {
           </p>
           <p>
             <span className="text-[var(--muted)]">Vencimento </span>
-            <span className="font-medium">
-              {sale.dueDate
-                ? formatDate(sale.dueDate)
-                : formatDate(sale.date)}
-            </span>
+            <span className="font-medium">{due}</span>
           </p>
         </div>
 
         {pix ? (
           <>
             <div className="mt-4 flex justify-center rounded-2xl bg-white p-4">
-              <QRCodeSVG value={pix} size={180} level="M" includeMargin />
+              <QRCodeCanvas
+                ref={qrRef}
+                value={pix}
+                size={180}
+                level="M"
+                includeMargin
+              />
             </div>
             <p className="mt-3 text-center text-xs text-[var(--muted)]">
-              Escaneie no app do banco ou use o PIX Copia e Cola.
+              Escaneie para pagar — ou use o PIX Copia e Cola abaixo.
             </p>
             <div className="mt-3 break-all rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-3 text-[10px] leading-relaxed text-[var(--muted)]">
               {pix}
             </div>
-            <Button
-              type="button"
-              className="mt-3 w-full"
-              variant="outline"
-              onClick={() => void copyPix()}
-            >
-              {copied ? (
-                <Check className="h-4 w-4" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-              {copied ? "Copiado" : "Copiar PIX Copia e Cola"}
-            </Button>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <Button
+                type="button"
+                className="w-full"
+                onClick={() => void copyPix()}
+              >
+                {copied ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+                {copied
+                  ? "Código copiado"
+                  : `Copiar PIX · ${formatCurrency(sale.total)}`}
+              </Button>
+              <Button
+                type="button"
+                className="w-full"
+                variant="outline"
+                disabled={pdfBusy}
+                onClick={() => void downloadPdf()}
+              >
+                <FileDown className="h-4 w-4" />
+                {pdfBusy ? "Gerando PDF…" : "Baixar PDF da cobrança"}
+              </Button>
+            </div>
           </>
-        ) : null}
+        ) : (
+          <Button
+            type="button"
+            className="mt-3 w-full"
+            variant="outline"
+            disabled={pdfBusy}
+            onClick={() => void downloadPdf()}
+          >
+            <FileDown className="h-4 w-4" />
+            {pdfBusy ? "Gerando PDF…" : "Baixar PDF da cobrança"}
+          </Button>
+        )}
 
         <p className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
           Importante: após o pagamento, envie o comprovante!
+        </p>
+        <p className="mt-2 text-[11px] text-[var(--muted)]">
+          Emitido em {formatDateTime(sale.date)}
         </p>
       </div>
     </div>
