@@ -18,24 +18,32 @@ import { Badge, Section } from "@/components/ui/misc";
 import { formatDateTime, minutesToLabel, whatsappUrl, googleMapsUrl, formatDistance } from "@/lib/utils";
 import { generateVisitPdf } from "@/lib/pdf/visit-report";
 import { getQuickGeo, warmGps } from "@/lib/geo";
+import { compressImageFile, compressSignatureDataUrl } from "@/lib/image";
 import type { getVisit } from "@/lib/data/actions";
 
 type VisitData = Awaited<ReturnType<typeof getVisit>>;
-
-async function fileToDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
 
 async function getGeo(): Promise<{ latitude?: number; longitude?: number }> {
   warmGps();
   const geo = await getQuickGeo();
   if (!geo) return {};
   return { latitude: geo.latitude, longitude: geo.longitude };
+}
+
+async function pickPhoto(
+  file: File | undefined,
+  setter: (url: string) => void,
+) {
+  if (!file) return;
+  try {
+    toast.message("Otimizando foto…");
+    const compressed = await compressImageFile(file);
+    setter(compressed);
+    toast.success("Foto pronta");
+  } catch (error) {
+    console.error(error);
+    toast.error("Não foi possível processar a foto. Tente de novo.");
+  }
 }
 
 export function VisitFlow({ data }: { data: VisitData }) {
@@ -165,10 +173,10 @@ export function VisitFlow({ data }: { data: VisitData }) {
                   type="file"
                   accept="image/*"
                   capture="environment"
-                  onChange={async (e) => {
+                  onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (!file) return;
-                    setArrivalPhoto(await fileToDataUrl(file));
+                    void pickPhoto(file, setArrivalPhoto);
+                    e.target.value = "";
                   }}
                 />
                 {arrivalPhoto ? (
@@ -185,41 +193,48 @@ export function VisitFlow({ data }: { data: VisitData }) {
                   disabled={pending || !arrivalPhoto}
                   onClick={() => {
                     startTransition(async () => {
-                      toast.message("Obtendo GPS…");
-                      const geo = await getGeo();
-                      const fd = new FormData();
-                      fd.set("visitId", data.visit.id);
-                      if (data.visit.appointmentId) {
-                        fd.set("appointmentId", data.visit.appointmentId);
-                      }
-                      fd.set("photoUrl", arrivalPhoto);
-                      if (geo.latitude != null)
-                        fd.set("latitude", String(geo.latitude));
-                      if (geo.longitude != null)
-                        fd.set("longitude", String(geo.longitude));
-                      const res = await startVisit(fd);
-                      if (res.error) {
-                        toast.error(res.error);
-                        return;
-                      }
-                      if (geo.latitude != null && geo.longitude != null) {
-                        const { updateJourneyOrigin } = await import(
-                          "@/components/dashboard/today-queue"
+                      try {
+                        toast.message("Obtendo GPS…");
+                        const geo = await getGeo();
+                        const fd = new FormData();
+                        fd.set("visitId", data.visit.id);
+                        if (data.visit.appointmentId) {
+                          fd.set("appointmentId", data.visit.appointmentId);
+                        }
+                        fd.set("photoUrl", arrivalPhoto);
+                        if (geo.latitude != null)
+                          fd.set("latitude", String(geo.latitude));
+                        if (geo.longitude != null)
+                          fd.set("longitude", String(geo.longitude));
+                        const res = await startVisit(fd);
+                        if (res.error) {
+                          toast.error(res.error);
+                          return;
+                        }
+                        if (geo.latitude != null && geo.longitude != null) {
+                          const { updateJourneyOrigin } = await import(
+                            "@/components/dashboard/today-queue"
+                          );
+                          updateJourneyOrigin(geo.latitude, geo.longitude);
+                        }
+                        if (res.locationMismatch) {
+                          toast.warning(
+                            `GPS divergente (${formatDistance(res.distanceMeters || 0)}). Atendimento liberado — Master verá a coordenada.`,
+                          );
+                        } else if (res.gpsUnavailable) {
+                          toast.warning(
+                            "GPS indisponível. Atendimento liberado com foto.",
+                          );
+                        } else {
+                          toast.success("Chegada registrada no histórico");
+                        }
+                        router.refresh();
+                      } catch (error) {
+                        console.error(error);
+                        toast.error(
+                          "Falha ao iniciar. Tente de novo com outra foto.",
                         );
-                        updateJourneyOrigin(geo.latitude, geo.longitude);
                       }
-                      if (res.locationMismatch) {
-                        toast.warning(
-                          `GPS divergente (${formatDistance(res.distanceMeters || 0)}). Atendimento liberado — Master verá a coordenada.`,
-                        );
-                      } else if (res.gpsUnavailable) {
-                        toast.warning(
-                          "GPS indisponível. Atendimento liberado com foto.",
-                        );
-                      } else {
-                        toast.success("Chegada registrada no histórico");
-                      }
-                      router.refresh();
                     });
                   }}
                 >
@@ -450,10 +465,10 @@ export function VisitFlow({ data }: { data: VisitData }) {
                       type="file"
                       accept="image/*"
                       capture="environment"
-                      onChange={async (e) => {
+                      onChange={(e) => {
                         const file = e.target.files?.[0];
-                        if (!file) return;
-                        setFinalPhoto(await fileToDataUrl(file));
+                        void pickPhoto(file, setFinalPhoto);
+                        e.target.value = "";
                       }}
                     />
                   </div>
@@ -471,7 +486,10 @@ export function VisitFlow({ data }: { data: VisitData }) {
                       <SignatureCanvas
                         ref={sigRef}
                         canvasProps={{
-                          className: "h-36 w-full",
+                          className: "h-36 w-full touch-none",
+                          width: 600,
+                          height: 144,
+                          style: { width: "100%", height: "144px" },
                         }}
                       />
                     </div>
@@ -497,36 +515,58 @@ export function VisitFlow({ data }: { data: VisitData }) {
                     disabled={pending || !finalPhoto || !requiredOk}
                     onClick={() => {
                       startTransition(async () => {
-                        const geo = await getGeo();
-                        const fd = new FormData();
-                        fd.set("visitId", data.visit.id);
-                        fd.set("photoUrl", finalPhoto);
-                        const obs = (
-                          document.getElementById(
-                            "final-obs",
-                          ) as HTMLTextAreaElement | null
-                        )?.value;
-                        if (obs) fd.set("observations", obs);
-                        const signature = sigRef.current?.isEmpty()
-                          ? ""
-                          : sigRef.current?.toDataURL("image/png") || "";
-                        if (signature) fd.set("signatureDataUrl", signature);
-                        if (geo.latitude)
-                          fd.set("latitude", String(geo.latitude));
-                        if (geo.longitude)
-                          fd.set("longitude", String(geo.longitude));
-                        const res = await finishVisit(fd);
-                        if (res.error) toast.error(res.error);
-                        else {
-                          if (geo.latitude != null && geo.longitude != null) {
-                            const { updateJourneyOrigin } = await import(
-                              "@/components/dashboard/today-queue"
-                            );
-                            updateJourneyOrigin(geo.latitude, geo.longitude);
+                        try {
+                          const geo = await getGeo();
+                          const fd = new FormData();
+                          fd.set("visitId", data.visit.id);
+                          fd.set("photoUrl", finalPhoto);
+                          const obs = (
+                            document.getElementById(
+                              "final-obs",
+                            ) as HTMLTextAreaElement | null
+                          )?.value;
+                          if (obs) fd.set("observations", obs);
+
+                          let signature = "";
+                          try {
+                            if (sigRef.current && !sigRef.current.isEmpty()) {
+                              const canvas = sigRef.current.getCanvas();
+                              signature =
+                                compressSignatureDataUrl(canvas) ||
+                                sigRef.current.toDataURL("image/jpeg", 0.7);
+                            }
+                          } catch {
+                            signature = "";
                           }
-                          toast.success("Atendimento finalizado");
-                          router.refresh();
-                          router.push("/dashboard");
+                          if (signature) fd.set("signatureDataUrl", signature);
+                          if (geo.latitude)
+                            fd.set("latitude", String(geo.latitude));
+                          if (geo.longitude)
+                            fd.set("longitude", String(geo.longitude));
+                          const res = await finishVisit(fd);
+                          if (res.error) toast.error(res.error);
+                          else {
+                            if (
+                              geo.latitude != null &&
+                              geo.longitude != null
+                            ) {
+                              const { updateJourneyOrigin } = await import(
+                                "@/components/dashboard/today-queue"
+                              );
+                              updateJourneyOrigin(
+                                geo.latitude,
+                                geo.longitude,
+                              );
+                            }
+                            toast.success("Atendimento finalizado");
+                            router.refresh();
+                            router.push("/dashboard");
+                          }
+                        } catch (error) {
+                          console.error(error);
+                          toast.error(
+                            "Falha ao finalizar. Tente de novo com outra foto.",
+                          );
                         }
                       });
                     }}

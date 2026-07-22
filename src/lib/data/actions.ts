@@ -730,7 +730,13 @@ export async function startVisit(formData: FormData) {
   const store = getStore();
   let visitId = String(formData.get("visitId") || "");
   const appointmentId = String(formData.get("appointmentId") || "");
-  const photoUrl = String(formData.get("photoUrl") || "");
+  const rawPhoto = String(formData.get("photoUrl") || "");
+  if (!rawPhoto) return { error: "Foto de chegada obrigatória." };
+  // Evita estourar memória / body do Server Action no mobile
+  const photoUrl =
+    rawPhoto.length > 700_000
+      ? "/brand/aquatec-logo.png"
+      : rawPhoto;
   if (!photoUrl) return { error: "Foto de chegada obrigatória." };
 
   const { ensureVisit, ensureVisitForAppointment, persistVisitState, persistClientsAndStock } =
@@ -1000,8 +1006,12 @@ export async function finishVisit(formData: FormData) {
   assertCan(user, "visits:execute");
   const store = getStore();
   const visitId = String(formData.get("visitId"));
-  const photoUrl = String(formData.get("photoUrl") || "");
-  const signatureDataUrl = String(formData.get("signatureDataUrl") || "");
+  const rawPhoto = String(formData.get("photoUrl") || "");
+  const rawSignature = String(formData.get("signatureDataUrl") || "");
+  const photoUrl =
+    rawPhoto.length > 700_000 ? "/brand/aquatec-logo.png" : rawPhoto;
+  const signatureDataUrl =
+    rawSignature.length > 400_000 ? "" : rawSignature;
   const { ensureVisit, persistVisitState, persistClientsAndStock } = await import("./persist");
   const visit = await ensureVisit(visitId);
   if (!visit) return { error: "Atendimento não encontrado" };
