@@ -23,7 +23,7 @@ const links = [
   { href: "/employees", label: "Funcionários", icon: Users, perm: "employees:read" as const },
   { href: "/reports", label: "Relatórios / KPIs", icon: FileText, perm: "reports:read" as const },
   { href: "/expenses", label: "Despesas", icon: Receipt, perm: null },
-  { href: "/sales", label: "Financeiro / Vendas", icon: Wallet, perm: "finance:read" as const },
+  { href: "/sales", label: "Cobranças / PIX", icon: Wallet, perm: "finance:read" as const },
   { href: "/audit", label: "Auditoria", icon: Shield, perm: "audit:read" as const },
   { href: "/notifications", label: "Notificações", icon: ClipboardList, perm: null },
 ];

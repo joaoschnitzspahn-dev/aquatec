@@ -1,18 +1,45 @@
 import { TopBar } from "@/components/layout/top-bar";
 import { Section, StatPill } from "@/components/ui/misc";
-import { getReports, listNotifications } from "@/lib/data/actions";
+import {
+  getReports,
+  getSalesReport,
+  listNotifications,
+} from "@/lib/data/actions";
 import { formatCurrency, minutesToLabel } from "@/lib/utils";
 import { ReportsCharts } from "@/components/visit/reports-charts";
+import { SalesReportPanel } from "@/components/sales/sales-report-panel";
 
-export default async function ReportsPage() {
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string }>;
+}) {
+  const sp = await searchParams;
+  const range =
+    sp.range === "year" || sp.range === "all" ? sp.range : "month";
+
   const data = await getReports();
+  const [month, year, all] = await Promise.all([
+    getSalesReport("month"),
+    getSalesReport("year"),
+    getSalesReport("all"),
+  ]);
   const notifications = await listNotifications();
   const unread = notifications.filter((n) => !n.read).length;
 
   return (
     <>
       <TopBar title="Relatórios" unread={unread} />
-      <div className="space-y-4 animate-fade-up">
+      <div className="space-y-5 animate-fade-up">
+        <Section title="Financeiro (vendas / cobranças)">
+          <SalesReportPanel
+            month={month}
+            year={year}
+            all={all}
+            active={range}
+          />
+        </Section>
+
         <div className="grid grid-cols-2 gap-3">
           <StatPill label="Visitas" value={data.totalVisits} />
           <StatPill label="Faturamento" value={formatCurrency(data.revenue)} />
@@ -37,7 +64,7 @@ export default async function ReportsPage() {
           </div>
         </Section>
 
-        <Section title="Gráficos">
+        <Section title="Operação">
           <ReportsCharts weekly={data.weekly} products={data.productUsage} />
         </Section>
       </div>

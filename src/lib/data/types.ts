@@ -260,12 +260,17 @@ export interface Sale {
   description?: string;
   total: number;
   date: string;
+  dueDate?: string;
+  pixPayload?: string;
+  status?: "OPEN" | "PAID" | "CANCELLED";
   items: {
     name: string;
     quantity: number;
+    unit?: string;
     unitPrice: number;
     total: number;
     productId?: string;
+    deliveredAt?: string;
   }[];
 }
 

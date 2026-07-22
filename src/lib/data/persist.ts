@@ -54,6 +54,7 @@ type DemoDataBlob = {
   deletedEquipmentIds?: string[];
   dismissedNotificationIds?: string[];
   readNotificationIds?: string[];
+  sales?: import("./types").Sale[];
 };
 
 function visitIdForAppointment(appointmentId: string) {
@@ -204,6 +205,14 @@ export async function hydrateDemoStore(): Promise<DemoStore> {
     }
   }
 
+  if (data.sales?.length) {
+    for (const item of data.sales) {
+      const idx = store.sales.findIndex((s) => s.id === item.id);
+      if (idx >= 0) store.sales[idx] = item;
+      else store.sales.unshift(item);
+    }
+  }
+
   for (const saved of Object.values(visits)) {
     const idx = store.visits.findIndex((v) => v.id === saved.id);
     if (idx >= 0) {
@@ -283,8 +292,16 @@ export async function persistNotificationRead(notificationId: string) {
   await writeDemoData(data);
 }
 
+export async function persistSales(store: DemoStore) {
+  const data = await readDemoData();
+  data.seedVersion = DEMO_SEED_VERSION;
+  data.sales = store.sales;
+  await writeDemoData(data);
+}
+
 export async function persistProducts(store: DemoStore) {
   const data = await readDemoData();
+  data.seedVersion = DEMO_SEED_VERSION;
   data.products = store.products;
   await writeDemoData(data);
 }

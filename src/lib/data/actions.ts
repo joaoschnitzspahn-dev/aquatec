@@ -1545,43 +1545,204 @@ export async function createExpense(formData: FormData) {
 export async function listSales() {
   const user = await requireUser();
   assertCan(user, "finance:read");
-  const store = getStore();
+  const { hydrateDemoStore } = await import("./persist");
+  const store = await hydrateDemoStore();
   return store.sales
     .filter((s) => s.companyId === user.companyId)
     .map((s) => ({
       ...s,
       client: store.clients.find((c) => c.id === s.clientId),
       employee: store.users.find((u) => u.id === s.employeeId)!,
-    }));
+    }))
+    .sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+    );
+}
+
+export async function getSale(saleId: string) {
+  const user = await requireUser();
+  assertCan(user, "finance:read");
+  const { hydrateDemoStore } = await import("./persist");
+  const store = await hydrateDemoStore();
+  const sale = store.sales.find(
+    (s) => s.id === saleId && s.companyId === user.companyId,
+  );
+  if (!sale) throw new Error("Cobrança não encontrada");
+  return {
+    ...sale,
+    client: store.clients.find((c) => c.id === sale.clientId),
+    employee: store.users.find((u) => u.id === sale.employeeId)!,
+  };
 }
 
 export async function createSale(formData: FormData) {
   const user = await requireUser();
   assertCan(user, "finance:write");
-  const store = getStore();
-  const total = Number(formData.get("total") || 0);
-  const sale = {
-    id: id(),
-    companyId: user.companyId,
-    clientId: String(formData.get("clientId") || "") || undefined,
-    employeeId: user.id,
-    type: String(formData.get("type") || "PRODUCT") as SaleType,
-    description: String(formData.get("description") || "") || undefined,
-    total,
-    date: new Date().toISOString(),
-    items: [
+  const { hydrateDemoStore, persistSales } = await import("./persist");
+  const { buildPixPayload } = await import("@/lib/pix");
+  const store = await hydrateDemoStore();
+
+  let items: {
+    name: string;
+    quantity: number;
+    unit?: string;
+    unitPrice: number;
+    total: number;
+    productId?: string;
+    deliveredAt?: string;
+  }[] = [];
+
+  const itemsRaw = String(formData.get("itemsJson") || "");
+  if (itemsRaw) {
+    try {
+      const parsed = JSON.parse(itemsRaw) as {
+        name: string;
+        quantity: number;
+        unit?: string;
+        unitPrice: number;
+        productId?: string;
+        deliveredAt?: string;
+      }[];
+      items = parsed.map((it) => ({
+        name: it.name,
+        quantity: Number(it.quantity) || 0,
+        unit: it.unit || "un",
+        unitPrice: Number(it.unitPrice) || 0,
+        total: Number(
+          ((Number(it.quantity) || 0) * (Number(it.unitPrice) || 0)).toFixed(2),
+        ),
+        productId: it.productId,
+        deliveredAt: it.deliveredAt || new Date().toISOString(),
+      }));
+    } catch {
+      return { error: "Itens inválidos" };
+    }
+  } else {
+    const total = Number(formData.get("total") || 0);
+    items = [
       {
         name: String(formData.get("description") || "Venda"),
         quantity: 1,
+        unit: "un",
         unitPrice: total,
         total,
+        deliveredAt: new Date().toISOString(),
       },
-    ],
+    ];
+  }
+
+  const total = Number(
+    items.reduce((acc, it) => acc + it.total, 0).toFixed(2),
+  );
+  if (total <= 0 || items.length === 0) {
+    return { error: "Adicione ao menos um item com valor." };
+  }
+
+  const clientId = String(formData.get("clientId") || "") || undefined;
+  const client = clientId
+    ? store.clients.find((c) => c.id === clientId)
+    : undefined;
+  const description =
+    String(formData.get("description") || "") ||
+    `Produtos${client ? ` · ${client.name}` : ""}`;
+  const dueDate =
+    String(formData.get("dueDate") || "") ||
+    new Date().toISOString().slice(0, 10);
+
+  const sale = {
+    id: id(),
+    companyId: user.companyId,
+    clientId,
+    employeeId: user.id,
+    type: String(formData.get("type") || "PRODUCT") as SaleType,
+    description,
+    total,
+    date: new Date().toISOString(),
+    dueDate,
+    status: "OPEN" as const,
+    pixPayload: buildPixPayload({
+      amount: total,
+      description: "Pagamento Produtos",
+    }),
+    items,
   };
+
   store.sales.unshift(sale);
+  await persistSales(store);
   audit(user.companyId, user.id, "CREATE", "Sale", sale.id);
   revalidatePath("/sales");
-  return { ok: true };
+  revalidatePath(`/sales/${sale.id}`);
+  revalidatePath("/reports");
+  return { ok: true, id: sale.id };
+}
+
+export async function getSalesReport(range: "month" | "year" | "all" = "month") {
+  const user = await requireUser();
+  assertCan(user, "finance:read");
+  const { hydrateDemoStore } = await import("./persist");
+  const store = await hydrateDemoStore();
+  const now = new Date();
+  const start = new Date(now);
+
+  if (range === "month") {
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+  } else if (range === "year") {
+    start.setMonth(0, 1);
+    start.setHours(0, 0, 0, 0);
+  } else {
+    start.setFullYear(2000, 0, 1);
+  }
+
+  const sales = store.sales.filter(
+    (s) => s.companyId === user.companyId && new Date(s.date) >= start,
+  );
+  const total = sales.reduce((a, s) => a + s.total, 0);
+  const byClientMap = new Map<string, { name: string; total: number; count: number }>();
+  const byProductMap = new Map<string, { name: string; quantity: number; total: number }>();
+  const byMonthMap = new Map<string, number>();
+
+  for (const s of sales) {
+    const clientName =
+      store.clients.find((c) => c.id === s.clientId)?.name || "Avulso";
+    const prev = byClientMap.get(clientName) || {
+      name: clientName,
+      total: 0,
+      count: 0,
+    };
+    prev.total += s.total;
+    prev.count += 1;
+    byClientMap.set(clientName, prev);
+
+    const monthKey = new Date(s.date).toLocaleDateString("pt-BR", {
+      month: "short",
+      year: "2-digit",
+    });
+    byMonthMap.set(monthKey, (byMonthMap.get(monthKey) || 0) + s.total);
+
+    for (const it of s.items) {
+      const p = byProductMap.get(it.name) || {
+        name: it.name,
+        quantity: 0,
+        total: 0,
+      };
+      p.quantity += it.quantity;
+      p.total += it.total;
+      byProductMap.set(it.name, p);
+    }
+  }
+
+  return {
+    range,
+    count: sales.length,
+    total,
+    byClient: [...byClientMap.values()].sort((a, b) => b.total - a.total),
+    byProduct: [...byProductMap.values()].sort((a, b) => b.total - a.total),
+    byMonth: [...byMonthMap.entries()].map(([month, value]) => ({
+      month,
+      value,
+    })),
+  };
 }
 
 export async function listAuditLogs() {
