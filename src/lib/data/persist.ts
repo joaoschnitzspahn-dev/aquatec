@@ -52,6 +52,8 @@ type DemoDataBlob = {
   deletedClientIds?: string[];
   deletedProductIds?: string[];
   deletedEquipmentIds?: string[];
+  dismissedNotificationIds?: string[];
+  readNotificationIds?: string[];
 };
 
 function visitIdForAppointment(appointmentId: string) {
@@ -134,6 +136,17 @@ export async function hydrateDemoStore(): Promise<DemoStore> {
     store.products = store.products.filter(
       (p) => !data.deletedProductIds!.includes(p.id),
     );
+  }
+  if (data.dismissedNotificationIds?.length) {
+    store.notifications = store.notifications.filter(
+      (n) => !data.dismissedNotificationIds!.includes(n.id),
+    );
+  }
+  if (data.readNotificationIds?.length) {
+    for (const nid of data.readNotificationIds) {
+      const n = store.notifications.find((x) => x.id === nid);
+      if (n) n.read = true;
+    }
   }
 
   if (data.clients?.length) {
@@ -251,6 +264,22 @@ export async function markEquipmentDeleted(equipmentId: string) {
     new Set([...(data.deletedEquipmentIds || []), equipmentId]),
   );
   data.equipment = (data.equipment || []).filter((e) => e.id !== equipmentId);
+  await writeDemoData(data);
+}
+
+export async function persistNotificationDismissed(notificationId: string) {
+  const data = await readDemoData();
+  data.dismissedNotificationIds = Array.from(
+    new Set([...(data.dismissedNotificationIds || []), notificationId]),
+  );
+  await writeDemoData(data);
+}
+
+export async function persistNotificationRead(notificationId: string) {
+  const data = await readDemoData();
+  data.readNotificationIds = Array.from(
+    new Set([...(data.readNotificationIds || []), notificationId]),
+  );
   await writeDemoData(data);
 }
 

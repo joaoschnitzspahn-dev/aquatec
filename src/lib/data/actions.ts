@@ -1426,7 +1426,8 @@ export async function getReports() {
 
 export async function listNotifications() {
   const user = await requireUser();
-  const store = getStore();
+  const { hydrateDemoStore } = await import("./persist");
+  const store = await hydrateDemoStore();
   return store.notifications
     .filter(
       (n) =>
@@ -1441,9 +1442,11 @@ export async function listNotifications() {
 
 export async function markNotificationRead(notificationId: string) {
   await requireUser();
-  const store = getStore();
+  const { hydrateDemoStore, persistNotificationRead } = await import("./persist");
+  const store = await hydrateDemoStore();
   const n = store.notifications.find((x) => x.id === notificationId);
   if (n) n.read = true;
+  await persistNotificationRead(notificationId);
   revalidatePath("/notifications");
   revalidatePath("/dashboard");
   return { ok: true };
@@ -1451,10 +1454,14 @@ export async function markNotificationRead(notificationId: string) {
 
 export async function dismissNotification(notificationId: string) {
   await requireUser();
-  const store = getStore();
+  const { hydrateDemoStore, persistNotificationDismissed } = await import(
+    "./persist"
+  );
+  const store = await hydrateDemoStore();
   store.notifications = store.notifications.filter(
     (n) => n.id !== notificationId,
   );
+  await persistNotificationDismissed(notificationId);
   revalidatePath("/notifications");
   revalidatePath("/dashboard");
   return { ok: true };
