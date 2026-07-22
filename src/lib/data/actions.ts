@@ -170,6 +170,97 @@ export async function getDashboardData() {
     )
     .slice(0, 5);
 
+  const liveEmployees =
+    user.role === "MASTER" || can(user, "employees:read")
+      ? store.users
+          .filter(
+            (u) =>
+              u.companyId === user.companyId &&
+              u.active &&
+              u.role === "EMPLOYEE",
+          )
+          .map((emp) => {
+            const empToday = enriched.filter((a) => a.employeeId === emp.id);
+            const pending = empToday.filter(
+              (a) => a.status !== "COMPLETED" && a.status !== "CANCELLED",
+            );
+            const done = empToday.filter((a) => a.status === "COMPLETED");
+            const active = pending.find(
+              (a) => a.status === "IN_PROGRESS" || a.visit?.status === "STARTED",
+            );
+            const nextStop = pending.find((a) => a.status === "SCHEDULED") || pending[0];
+
+            let phase: "at_client" | "traveling" | "idle" | "done" | "off" =
+              "off";
+            let focusClient: {
+              id: string;
+              name: string;
+              address: string;
+            } | null = null;
+
+            if (active) {
+              phase = "at_client";
+              focusClient = {
+                id: active.client.id,
+                name: active.client.name,
+                address: active.client.address,
+              };
+            } else if (pending.length > 0 && nextStop) {
+              phase = "traveling";
+              focusClient = {
+                id: nextStop.client.id,
+                name: nextStop.client.name,
+                address: nextStop.client.address,
+              };
+            } else if (empToday.length > 0 && pending.length === 0) {
+              phase = "done";
+            } else if (emp.isOnline) {
+              phase = "idle";
+            }
+
+            const lastGpsVisit = [...store.visits]
+              .filter((v) => v.employeeId === emp.id)
+              .sort(
+                (a, b) =>
+                  new Date(b.finishedAt || b.startedAt || b.createdAt).getTime() -
+                  new Date(a.finishedAt || a.startedAt || a.createdAt).getTime(),
+              )[0];
+
+            return {
+              id: emp.id,
+              name: emp.name,
+              isOnline: emp.isOnline,
+              phase,
+              focusClient,
+              pendingCount: pending.length,
+              doneCount: done.length,
+              totalToday: empToday.length,
+              activeVisitId: active?.visit?.id || null,
+              nextAppointmentId: nextStop?.id || null,
+              lastGps:
+                lastGpsVisit?.endLatitude != null ||
+                lastGpsVisit?.startLatitude != null
+                  ? {
+                      lat: (lastGpsVisit.endLatitude ??
+                        lastGpsVisit.startLatitude) as number,
+                      lng: (lastGpsVisit.endLongitude ??
+                        lastGpsVisit.startLongitude) as number,
+                    }
+                  : null,
+            };
+          })
+          .sort((a, b) => {
+            const rank = {
+              at_client: 0,
+              traveling: 1,
+              idle: 2,
+              done: 3,
+              off: 4,
+            };
+            return rank[a.phase] - rank[b.phase] || a.name.localeCompare(b.name);
+          })
+      : [];
+
   return {
     user,
     todayCount: enriched.length,
@@ -192,6 +283,7 @@ export async function getDashboardData() {
               serviceTime: c.serviceTime,
             }))
         : [],
+    liveEmployees,
     next,
     pending,
     lastKnown,
@@ -203,7 +295,13 @@ export async function getDashboardData() {
             (c) => c.companyId === user.companyId && c.status === "ACTIVE",
           ).length,
           online: store.users.filter(
-            (u) => u.companyId === user.companyId && u.isOnline,
+            (u) =>
+              u.companyId === user.companyId &&
+              u.isOnline &&
+              u.role === "EMPLOYEE",
+          ).length,
+          onRoute: liveEmployees.filter(
+            (e) => e.phase === "at_client" || e.phase === "traveling",
           ).length,
           lowStock: lowStockProducts.length,
           lowClientStock: lowClientStock.length,
@@ -213,6 +311,77 @@ export async function getDashboardData() {
         }
       : null,
   };
+}
+
+export async function getEmployeeTodayRoute(employeeId: string) {
+  const user = await requireUser();
+  assertCan(user, "employees:read");
+  const { hydrateDemoStore } = await import("./persist");
+  const store = await hydrateDemoStore();
+  const employee = store.users.find(
+    (u) => u.id === employeeId && u.companyId === user.companyId,
+  );
+  if (!employee) throw new Error("Funcionário não encontrado");
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const list = store.appointments
+    .filter((a) => {
+      const d = new Date(a.scheduledAt);
+      return (
+        a.companyId === user.companyId &&
+        a.employeeId === employeeId &&
+        d >= today &&
+        d < tomorrow
+      );
+    })
+    .map((a) => {
+      const visit = store.visits.find((v) => v.appointmentId === a.id);
+      const status =
+        visit?.status === "COMPLETED"
+          ? ("COMPLETED" as const)
+          : visit?.status === "STARTED"
+            ? ("IN_PROGRESS" as const)
+            : a.status;
+      return {
+        ...a,
+        status,
+        client: store.clients.find((c) => c.id === a.clientId)!,
+        visit,
+      };
+    })
+    .sort(
+      (a, b) =>
+        new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
+    );
+
+  const pending = list.filter(
+    (a) => a.status !== "COMPLETED" && a.status !== "CANCELLED",
+  );
+  const completed = list.filter((a) => a.status === "COMPLETED");
+
+  const lastGpsVisit = [...store.visits]
+    .filter((v) => v.employeeId === employeeId)
+    .sort(
+      (a, b) =>
+        new Date(b.finishedAt || b.startedAt || b.createdAt).getTime() -
+        new Date(a.finishedAt || a.startedAt || a.createdAt).getTime(),
+    )[0];
+  const lastKnown =
+    lastGpsVisit &&
+    (lastGpsVisit.endLatitude ?? lastGpsVisit.startLatitude) != null
+      ? {
+          lat: (lastGpsVisit.endLatitude ??
+            lastGpsVisit.startLatitude) as number,
+          lng: (lastGpsVisit.endLongitude ??
+            lastGpsVisit.startLongitude) as number,
+        }
+      : null;
+
+  return { employee, pending, completed, lastKnown };
 }
 
 export async function listClients(query?: string) {

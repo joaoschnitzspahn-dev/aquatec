@@ -2,11 +2,11 @@ import Link from "next/link";
 import { TopBar } from "@/components/layout/top-bar";
 import { Badge, Section, StatPill } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
-import { TodayQueue } from "@/components/dashboard/today-queue";
 import { EmployeeJourney } from "@/components/dashboard/employee-journey";
+import { MasterLiveBoard } from "@/components/dashboard/master-live-board";
 import { DashboardAlerts } from "@/components/dashboard/dashboard-alerts";
 import { getDashboardData, listNotifications } from "@/lib/data/actions";
-import { formatCurrency, formatTime, minutesToLabel } from "@/lib/utils";
+import { formatCurrency, minutesToLabel } from "@/lib/utils";
 
 function mapAppt(
   a: Awaited<ReturnType<typeof getDashboardData>>["pendingAppointments"][number],
@@ -42,23 +42,20 @@ export default async function DashboardPage() {
               Olá, {data.user.name.split(" ")[0]}
             </p>
             <h2 className="text-2xl font-semibold tracking-tight">
-              Sua operação em dia
+              Operação da equipe
             </h2>
           </div>
         ) : null}
 
-        {!isEmployee ? (
+        {!isEmployee && data.master ? (
           <div className="grid grid-cols-2 gap-3">
-            <StatPill label="Atendimentos" value={data.todayCount} hint="hoje" />
-            <StatPill label="Pendentes" value={data.pending} />
+            <StatPill label="Em rota" value={data.master.onRoute} />
+            <StatPill label="Online" value={data.master.online} />
+            <StatPill label="Pendentes" value={data.pending} hint="hoje" />
             <StatPill
-              label="Tempo médio"
-              value={minutesToLabel(data.avgTime || 0)}
-            />
-            <StatPill
-              label="Próximo"
-              value={data.next ? formatTime(data.next.scheduledAt) : "—"}
-              hint={data.next?.client.name}
+              label="Concluídos"
+              value={data.master.completedToday}
+              hint="hoje"
             />
           </div>
         ) : null}
@@ -72,11 +69,7 @@ export default async function DashboardPage() {
             lastKnown={data.lastKnown}
           />
         ) : (
-          <TodayQueue
-            appointments={data.pendingAppointments.map(mapAppt)}
-            completed={data.completedAppointments.map(mapAppt)}
-            lastKnown={data.lastKnown}
-          />
+          <MasterLiveBoard employees={data.liveEmployees} />
         )}
 
         <DashboardAlerts
@@ -90,22 +83,18 @@ export default async function DashboardPage() {
         />
 
         {data.master ? (
-          <Section title="Visão Master">
+          <Section title="Resumo do dia">
             <div className="grid grid-cols-2 gap-3">
               <StatPill label="Clientes" value={data.master.clients} />
-              <StatPill label="Online" value={data.master.online} />
+              <StatPill
+                label="Tempo médio"
+                value={minutesToLabel(data.avgTime || 0)}
+              />
               <StatPill label="Estoque baixo" value={data.master.lowStock} />
               <StatPill
-                label="Concluídos"
-                value={data.master.completedToday}
-                hint="hoje"
+                label="Faturamento"
+                value={formatCurrency(data.master.revenue)}
               />
-              <div className="col-span-2">
-                <StatPill
-                  label="Faturamento hoje"
-                  value={formatCurrency(data.master.revenue)}
-                />
-              </div>
             </div>
             {data.master.lowStockProducts.length > 0 ? (
               <div className="mt-3 space-y-2">
@@ -126,7 +115,12 @@ export default async function DashboardPage() {
           </Section>
         ) : null}
 
-        <Button asChild className="relative z-10 w-full" size="lg" variant={isEmployee ? "outline" : "default"}>
+        <Button
+          asChild
+          className="relative z-10 w-full"
+          size="lg"
+          variant="outline"
+        >
           <Link href="/schedule">Ver agenda completa</Link>
         </Button>
       </div>
