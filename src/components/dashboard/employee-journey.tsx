@@ -103,8 +103,6 @@ function HoldToStartButton({
     };
   }, []);
 
-  const secondsLeft = Math.ceil((1 - progress) * (HOLD_MS / 1000));
-
   return (
     <button
       type="button"
@@ -134,11 +132,7 @@ function HoldToStartButton({
         }`}
       >
         <Play className="h-5 w-5" />
-        {holding
-          ? progress >= 1
-            ? "Iniciando…"
-            : `Segure… ${secondsLeft}s`
-          : "Aperte e segure para iniciar"}
+        Aperte e segure para iniciar
       </span>
     </button>
   );
