@@ -18,7 +18,7 @@ async function main() {
     create: {
       companyId: company.id,
       email: "master@aquatec.com",
-      name: "Carlos Master",
+      name: "Rodrigo Prazeres",
       role: "MASTER",
       passwordHash: "aquatec123",
       phone: "11999990001",

@@ -252,7 +252,7 @@ export function createSeedStore(): DemoStore {
         id: MASTER_ID,
         companyId: COMPANY_ID,
         email: "master@aquatec.com",
-        name: "Carlos Master",
+        name: "Rodrigo Prazeres",
         phone: "47999990001",
         role: "MASTER",
         password: "aquatec123",
