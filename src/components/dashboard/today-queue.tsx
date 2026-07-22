@@ -350,3 +350,11 @@ export function updateJourneyOrigin(lat: number, lng: number) {
     /* ignore */
   }
 }
+
+export function clearJourneyOrigin() {
+  try {
+    sessionStorage.removeItem(journeyKey());
+  } catch {
+    /* ignore */
+  }
+}

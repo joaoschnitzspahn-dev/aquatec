@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { MapPin, Navigation, Play, Users } from "lucide-react";
+import { MapPin, Navigation, Play, Square, Users } from "lucide-react";
 import { toast } from "sonner";
 import {
   TodayQueue,
   type TodayAppointmentItem,
+  clearJourneyOrigin,
   updateJourneyOrigin,
 } from "@/components/dashboard/today-queue";
 import { Badge, Section } from "@/components/ui/misc";
@@ -36,6 +37,14 @@ function readStarted(): boolean {
 function writeStarted() {
   try {
     sessionStorage.setItem(startedKey(), "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearStarted() {
+  try {
+    sessionStorage.removeItem(startedKey());
   } catch {
     /* ignore */
   }
@@ -80,6 +89,13 @@ export function EmployeeJourney({
     writeStarted();
     setStarted(true);
     setStarting(false);
+  }
+
+  function stopJourney() {
+    clearStarted();
+    clearJourneyOrigin();
+    setStarted(false);
+    toast.message("Jornada encerrada. Pode iniciar de novo quando quiser.");
   }
 
   if (!ready) {
@@ -166,7 +182,15 @@ export function EmployeeJourney({
           <Navigation className="h-4 w-4" />
           Jornada em andamento
         </div>
-        <Badge tone="success">Ativa</Badge>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={stopJourney}
+        >
+          <Square className="h-3.5 w-3.5" />
+          Encerrar
+        </Button>
       </div>
 
       <Section
