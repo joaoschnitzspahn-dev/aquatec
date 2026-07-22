@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { AlertTriangle } from "lucide-react";
 import { TopBar } from "@/components/layout/top-bar";
 import { Badge, Section, StatPill } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { TodayQueue } from "@/components/dashboard/today-queue";
 import { EmployeeJourney } from "@/components/dashboard/employee-journey";
+import { DashboardAlerts } from "@/components/dashboard/dashboard-alerts";
 import { getDashboardData, listNotifications } from "@/lib/data/actions";
 import { formatCurrency, formatTime, minutesToLabel } from "@/lib/utils";
 
@@ -79,35 +79,15 @@ export default async function DashboardPage() {
           />
         )}
 
-        {data.alerts.length > 0 ? (
-          <Section
-            title="Avisos"
-            action={
-              <Link
-                href="/notifications"
-                className="relative z-10 text-xs text-[var(--brand)]"
-              >
-                Ver todos
-              </Link>
-            }
-          >
-            <div className="space-y-2">
-              {data.alerts.map((a) => (
-                <Link
-                  key={a.id}
-                  href={a.link || "/notifications"}
-                  className="relative z-10 flex gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3"
-                >
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--warning)]" />
-                  <div>
-                    <p className="text-sm font-medium">{a.title}</p>
-                    <p className="text-xs text-[var(--muted)]">{a.message}</p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </Section>
-        ) : null}
+        <DashboardAlerts
+          alerts={data.alerts.map((a) => ({
+            id: a.id,
+            title: a.title,
+            message: a.message,
+            link: a.link,
+            read: a.read,
+          }))}
+        />
 
         {data.master ? (
           <Section title="Visão Master">

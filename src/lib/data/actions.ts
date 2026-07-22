@@ -162,7 +162,12 @@ export async function getDashboardData() {
   const revenue = salesToday.reduce((acc, s) => acc + s.total, 0);
 
   const alerts = store.notifications
-    .filter((n) => n.companyId === user.companyId && !n.read)
+    .filter(
+      (n) =>
+        n.companyId === user.companyId &&
+        (!n.userId || n.userId === user.id) &&
+        !n.read,
+    )
     .slice(0, 5);
 
   return {
@@ -1205,6 +1210,18 @@ export async function markNotificationRead(notificationId: string) {
   const n = store.notifications.find((x) => x.id === notificationId);
   if (n) n.read = true;
   revalidatePath("/notifications");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function dismissNotification(notificationId: string) {
+  await requireUser();
+  const store = getStore();
+  store.notifications = store.notifications.filter(
+    (n) => n.id !== notificationId,
+  );
+  revalidatePath("/notifications");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
