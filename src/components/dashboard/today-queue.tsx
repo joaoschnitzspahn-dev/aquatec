@@ -73,10 +73,13 @@ export function TodayQueue({
   appointments,
   completed,
   lastKnown,
+  autoLocate = true,
 }: {
   appointments: TodayAppointmentItem[];
   completed: TodayAppointmentItem[];
   lastKnown?: { lat: number; lng: number } | null;
+  /** Se false, só lê origem já salva (ex.: após Iniciar jornada). */
+  autoLocate?: boolean;
 }) {
   const [origin, setOrigin] = useState<Origin>(() =>
     lastKnown
@@ -96,6 +99,14 @@ export function TodayQueue({
         setOrigin(stored);
         setLocating(false);
         setGpsHint("Rota pelo mais próximo da sua posição.");
+        return;
+      }
+      if (!autoLocate) {
+        if (lastKnown) {
+          setOrigin({ ...lastKnown, source: "last" });
+          setGpsHint("Usando a posição do início da jornada.");
+        }
+        setLocating(false);
         return;
       }
     }

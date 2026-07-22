@@ -4,74 +4,80 @@ import { TopBar } from "@/components/layout/top-bar";
 import { Badge, Section, StatPill } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
 import { TodayQueue } from "@/components/dashboard/today-queue";
+import { EmployeeJourney } from "@/components/dashboard/employee-journey";
 import { getDashboardData, listNotifications } from "@/lib/data/actions";
 import { formatCurrency, formatTime, minutesToLabel } from "@/lib/utils";
+
+function mapAppt(
+  a: Awaited<ReturnType<typeof getDashboardData>>["pendingAppointments"][number],
+) {
+  return {
+    id: a.id,
+    scheduledAt: a.scheduledAt,
+    status: a.status,
+    client: {
+      id: a.client.id,
+      name: a.client.name,
+      address: a.client.address,
+      latitude: a.client.latitude,
+      longitude: a.client.longitude,
+    },
+    visit: a.visit ? { id: a.visit.id, status: a.visit.status } : null,
+  };
+}
 
 export default async function DashboardPage() {
   const data = await getDashboardData();
   const notifications = await listNotifications();
   const unread = notifications.filter((n) => !n.read).length;
+  const isEmployee = data.user.role === "EMPLOYEE";
 
   return (
     <>
       <TopBar title="Hoje" unread={unread} />
       <div className="relative z-0 space-y-5 animate-fade-up">
-        <div>
-          <p className="text-sm text-[var(--muted)]">
-            Olá, {data.user.name.split(" ")[0]}
-          </p>
-          <h2 className="text-2xl font-semibold tracking-tight">
-            Sua operação em dia
-          </h2>
-        </div>
+        {!isEmployee ? (
+          <div>
+            <p className="text-sm text-[var(--muted)]">
+              Olá, {data.user.name.split(" ")[0]}
+            </p>
+            <h2 className="text-2xl font-semibold tracking-tight">
+              Sua operação em dia
+            </h2>
+          </div>
+        ) : null}
 
-        <div className="grid grid-cols-2 gap-3">
-          <StatPill label="Atendimentos" value={data.todayCount} hint="hoje" />
-          <StatPill label="Pendentes" value={data.pending} />
-          <StatPill
-            label="Tempo médio"
-            value={minutesToLabel(data.avgTime || 0)}
-          />
-          <StatPill
-            label="Próximo"
-            value={data.next ? formatTime(data.next.scheduledAt) : "—"}
-            hint={data.next?.client.name}
-          />
-        </div>
+        {!isEmployee ? (
+          <div className="grid grid-cols-2 gap-3">
+            <StatPill label="Atendimentos" value={data.todayCount} hint="hoje" />
+            <StatPill label="Pendentes" value={data.pending} />
+            <StatPill
+              label="Tempo médio"
+              value={minutesToLabel(data.avgTime || 0)}
+            />
+            <StatPill
+              label="Próximo"
+              value={data.next ? formatTime(data.next.scheduledAt) : "—"}
+              hint={data.next?.client.name}
+            />
+          </div>
+        ) : null}
 
-        <TodayQueue
-          appointments={data.pendingAppointments.map((a) => ({
-            id: a.id,
-            scheduledAt: a.scheduledAt,
-            status: a.status,
-            client: {
-              id: a.client.id,
-              name: a.client.name,
-              address: a.client.address,
-              latitude: a.client.latitude,
-              longitude: a.client.longitude,
-            },
-            visit: a.visit
-              ? { id: a.visit.id, status: a.visit.status }
-              : null,
-          }))}
-          completed={data.completedAppointments.map((a) => ({
-            id: a.id,
-            scheduledAt: a.scheduledAt,
-            status: a.status,
-            client: {
-              id: a.client.id,
-              name: a.client.name,
-              address: a.client.address,
-              latitude: a.client.latitude,
-              longitude: a.client.longitude,
-            },
-            visit: a.visit
-              ? { id: a.visit.id, status: a.visit.status }
-              : null,
-          }))}
-          lastKnown={data.lastKnown}
-        />
+        {isEmployee ? (
+          <EmployeeJourney
+            employeeName={data.user.name.split(" ")[0]}
+            appointments={data.pendingAppointments.map(mapAppt)}
+            completed={data.completedAppointments.map(mapAppt)}
+            assignedClients={data.assignedClients}
+            lastKnown={data.lastKnown}
+          />
+        ) : (
+          <TodayQueue
+            appointments={data.pendingAppointments.map(mapAppt)}
+            completed={data.completedAppointments.map(mapAppt)}
+            lastKnown={data.lastKnown}
+          />
+        )}
 
         {data.alerts.length > 0 ? (
           <Section
@@ -140,7 +146,7 @@ export default async function DashboardPage() {
           </Section>
         ) : null}
 
-        <Button asChild className="relative z-10 w-full" size="lg">
+        <Button asChild className="relative z-10 w-full" size="lg" variant={isEmployee ? "outline" : "default"}>
           <Link href="/schedule">Ver agenda completa</Link>
         </Button>
       </div>

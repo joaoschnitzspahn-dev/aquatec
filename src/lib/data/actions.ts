@@ -159,6 +159,23 @@ export async function getDashboardData() {
     todayCount: enriched.length,
     pendingAppointments: pendingList,
     completedAppointments,
+    assignedClients:
+      user.role === "EMPLOYEE"
+        ? store.clients
+            .filter(
+              (c) =>
+                c.companyId === user.companyId &&
+                c.status === "ACTIVE" &&
+                c.responsibleId === user.id,
+            )
+            .map((c) => ({
+              id: c.id,
+              name: c.name,
+              address: c.address,
+              city: c.city,
+              serviceTime: c.serviceTime,
+            }))
+        : [],
     next,
     pending,
     lastKnown,
