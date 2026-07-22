@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { MapPin, Navigation, Play, Square, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -21,8 +21,6 @@ export type AssignedClient = {
   city?: string;
   serviceTime?: string;
 };
-
-const HOLD_MS = 3000;
 
 function startedKey() {
   return `aquatec_journey_started_${new Date().toISOString().slice(0, 10)}`;
@@ -50,92 +48,6 @@ function clearStarted() {
   } catch {
     /* ignore */
   }
-}
-
-function HoldToStartButton({
-  disabled,
-  onComplete,
-}: {
-  disabled?: boolean;
-  onComplete: () => void;
-}) {
-  const [progress, setProgress] = useState(0);
-  const [holding, setHolding] = useState(false);
-  const rafRef = useRef<number | null>(null);
-  const startAtRef = useRef(0);
-  const doneRef = useRef(false);
-
-  function clearHold() {
-    if (doneRef.current) return;
-    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-    rafRef.current = null;
-    startAtRef.current = 0;
-    setHolding(false);
-    setProgress(0);
-  }
-
-  function beginHold() {
-    if (disabled) return;
-    doneRef.current = false;
-    setHolding(true);
-    startAtRef.current = performance.now();
-
-    const tick = (now: number) => {
-      const p = Math.min(1, (now - startAtRef.current) / HOLD_MS);
-      setProgress(p);
-      if (p >= 1) {
-        if (!doneRef.current) {
-          doneRef.current = true;
-          setHolding(false);
-          setProgress(1);
-          onComplete();
-        }
-        return;
-      }
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-  }
-
-  useEffect(() => {
-    return () => {
-      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-    };
-  }, []);
-
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      className="relative mt-5 flex h-14 w-full select-none items-center justify-center overflow-hidden rounded-2xl border border-[var(--brand)]/40 bg-[var(--surface)] text-base font-semibold text-[var(--foreground)] shadow-lg shadow-[var(--brand-soft)] transition active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 touch-none"
-      style={{ WebkitUserSelect: "none", userSelect: "none" }}
-      onContextMenu={(e) => e.preventDefault()}
-      onPointerDown={(e) => {
-        e.preventDefault();
-        e.currentTarget.setPointerCapture(e.pointerId);
-        beginHold();
-      }}
-      onPointerUp={clearHold}
-      onPointerCancel={clearHold}
-      onPointerLeave={() => {
-        if (holding) clearHold();
-      }}
-    >
-      <span
-        aria-hidden
-        className="absolute inset-y-0 left-0 bg-[var(--brand)] transition-[width] duration-75 ease-linear"
-        style={{ width: `${progress * 100}%` }}
-      />
-      <span
-        className={`relative z-10 flex items-center gap-2 ${
-          progress > 0.45 ? "text-white" : "text-[var(--foreground)]"
-        }`}
-      >
-        <Play className="h-5 w-5" />
-        Aperte e segure para iniciar
-      </span>
-    </button>
-  );
 }
 
 export function EmployeeJourney({
@@ -208,8 +120,8 @@ export function EmployeeJourney({
             Pronto para a rota?
           </h2>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Segure o botão por 3 segundos para capturar o GPS e montar a rota
-            do dia com os clientes designados a você.
+            Ao iniciar a jornada, o app captura seu GPS e monta a rota do dia
+            com os clientes designados a você.
           </p>
 
           <div className="mt-4 grid grid-cols-2 gap-3">
@@ -227,13 +139,16 @@ export function EmployeeJourney({
             </div>
           </div>
 
-          <HoldToStartButton
+          <Button
+            type="button"
+            size="lg"
+            className="mt-5 w-full"
             disabled={starting}
-            onComplete={() => void startJourney()}
-          />
-          <p className="mt-2 text-center text-xs text-[var(--muted)]">
-            Solte antes dos 3s para cancelar
-          </p>
+            onClick={() => void startJourney()}
+          >
+            <Play className="h-5 w-5" />
+            {starting ? "Iniciando…" : "Iniciar jornada"}
+          </Button>
         </div>
 
         <Section title="Prévia dos clientes designados">
