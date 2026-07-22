@@ -14,6 +14,8 @@ import { getStore } from "./store";
 
 export const DEMO_VISITS_COOKIE = "aquatec_demo_visits";
 export const DEMO_DATA_COOKIE = "aquatec_demo_data";
+/** Bump quando o seed mudar — descarta overlays antigos do cookie. */
+export const DEMO_SEED_VERSION = "sc-penha-picarras-v1";
 
 export type PersistedVisit = {
   id: string;
@@ -40,6 +42,7 @@ export type PersistedVisit = {
 };
 
 type DemoDataBlob = {
+  seedVersion?: string;
   clients?: Client[];
   products?: Product[];
   clientStock?: ClientStockItem[];
@@ -114,8 +117,13 @@ async function writeDemoData(data: DemoDataBlob) {
 /** Aplica overlays de cookie no store em memória (Vercel serverless). */
 export async function hydrateDemoStore(): Promise<DemoStore> {
   const store = getStore();
-  const data = await readDemoData();
+  let data = await readDemoData();
   const visits = await readPersistedVisits();
+
+  if (data.seedVersion !== DEMO_SEED_VERSION) {
+    data = { seedVersion: DEMO_SEED_VERSION };
+    await writeDemoData(data);
+  }
 
   if (data.deletedClientIds?.length) {
     store.clients = store.clients.filter(
@@ -216,6 +224,7 @@ export async function hydrateDemoStore(): Promise<DemoStore> {
 
 export async function persistClientsAndStock(store: DemoStore) {
   const data = await readDemoData();
+  data.seedVersion = DEMO_SEED_VERSION;
   data.clients = store.clients;
   data.clientStock = store.clientStock;
   data.products = store.products;
