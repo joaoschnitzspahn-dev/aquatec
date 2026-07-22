@@ -68,12 +68,13 @@ export async function generateChargePdf(input: {
 
   const logoDataUrl = input.logoDataUrl || (await loadLogoDataUrl());
   if (logoDataUrl) {
-    const logoW = 58;
-    const logoH = 28;
+    // Logo recortada ~939x293 (proporção larga)
+    const logoW = 72;
+    const logoH = logoW * (293 / 939);
     const logoX = (pageW - logoW) / 2;
     try {
-      doc.addImage(logoDataUrl, "PNG", logoX, y, logoW, logoH);
-      y += logoH + 4;
+      doc.addImage(logoDataUrl, "PNG", logoX, y, logoW, logoH, undefined, "FAST");
+      y += logoH + 6;
     } catch {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(18);

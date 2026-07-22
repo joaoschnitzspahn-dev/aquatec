@@ -78,7 +78,7 @@ export function ChargeReceipt({ sale }: { sale: ChargeSale }) {
         <img
           src="/aquatec-logo.png"
           alt="Aquatec"
-          className="mx-auto h-16 w-auto object-contain"
+          className="mx-auto h-14 w-auto max-w-[260px] object-contain"
         />
         <p className="mt-3 text-xs uppercase tracking-wide text-[var(--muted)]">
           Relatório de produtos e serviços
