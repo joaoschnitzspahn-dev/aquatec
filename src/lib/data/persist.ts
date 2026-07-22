@@ -219,6 +219,17 @@ export async function hydrateDemoStore(): Promise<DemoStore> {
     }
   }
 
+  // Alinha status do agendamento com a visita persistida
+  for (const visit of store.visits) {
+    if (!visit.appointmentId) continue;
+    const apt = store.appointments.find((a) => a.id === visit.appointmentId);
+    if (!apt) continue;
+    if (visit.status === "COMPLETED") apt.status = "COMPLETED";
+    else if (visit.status === "STARTED" && apt.status === "SCHEDULED") {
+      apt.status = "IN_PROGRESS";
+    }
+  }
+
   return store;
 }
 

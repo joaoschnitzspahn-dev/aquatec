@@ -122,7 +122,7 @@ export function RouteMap({ origin, routeStops, doneStops }: Props) {
         L.marker([s.lat, s.lng], { icon: doneIcon })
           .bindPopup(`${s.name} · concluído`)
           .addTo(layers);
-        bounds.push([s.lat, s.lng]);
+        // Não entra nos bounds da rota ativa — só referência visual
       });
 
       const pathPoints: { lat: number; lng: number }[] = [];
@@ -139,7 +139,11 @@ export function RouteMap({ origin, routeStops, doneStops }: Props) {
             weight: 5,
             opacity: 0.9,
           }).addTo(layers);
-          setStatus("Rota traçada · finalizados fora do caminho");
+          setStatus(
+            doneStops.length > 0
+              ? `Rota atualizada · ${doneStops.length} fora do caminho`
+              : "Rota traçada",
+          );
         } else {
           L.polyline(
             pathPoints.map((p) => [p.lat, p.lng] as [number, number]),
@@ -147,8 +151,11 @@ export function RouteMap({ origin, routeStops, doneStops }: Props) {
           ).addTo(layers);
           setStatus("Rota aproximada (linha reta)");
         }
+      } else if (pathPoints.length === 1 && routeStops.length === 1) {
+        setStatus("Última parada da rota");
       } else if (routeStops.length === 0 && doneStops.length > 0) {
-        setStatus("Rota concluída — só finalizados no mapa");
+        setStatus("Rota concluída — finalizados fora do caminho");
+        doneStops.forEach((s) => bounds.push([s.lat, s.lng]));
       } else {
         setStatus("Aguardando localização e paradas");
       }

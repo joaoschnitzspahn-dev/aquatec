@@ -77,12 +77,23 @@ export async function getDashboardData() {
   }
 
   const enriched = appointments
-    .map((a) => ({
-      ...a,
-      client: store.clients.find((c) => c.id === a.clientId)!,
-      employee: store.users.find((u) => u.id === a.employeeId)!,
-      visit: store.visits.find((v) => v.appointmentId === a.id),
-    }))
+    .map((a) => {
+      const visit = store.visits.find((v) => v.appointmentId === a.id);
+      // Visita concluída manda na fila (mesmo se o status do agendamento atrasar)
+      const status =
+        visit?.status === "COMPLETED"
+          ? ("COMPLETED" as const)
+          : visit?.status === "STARTED"
+            ? ("IN_PROGRESS" as const)
+            : a.status;
+      return {
+        ...a,
+        status,
+        client: store.clients.find((c) => c.id === a.clientId)!,
+        employee: store.users.find((u) => u.id === a.employeeId)!,
+        visit,
+      };
+    })
     .sort(
       (a, b) =>
         new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
@@ -717,7 +728,7 @@ export async function startVisit(formData: FormData) {
   const photoUrl = String(formData.get("photoUrl") || "");
   if (!photoUrl) return { error: "Foto de chegada obrigatória." };
 
-  const { ensureVisit, ensureVisitForAppointment, persistVisitState } =
+  const { ensureVisit, ensureVisitForAppointment, persistVisitState, persistClientsAndStock } =
     await import("./persist");
 
   let visit = visitId ? await ensureVisit(visitId) : null;
@@ -820,6 +831,7 @@ export async function startVisit(formData: FormData) {
   }
 
   await persistVisitState(visit, { hasArrivalPhoto: true });
+  await persistClientsAndStock(store);
   audit(user.companyId, user.id, "START", "ServiceVisit", visit.id, {
     latitude: lat,
     longitude: lng,
@@ -985,7 +997,7 @@ export async function finishVisit(formData: FormData) {
   const visitId = String(formData.get("visitId"));
   const photoUrl = String(formData.get("photoUrl") || "");
   const signatureDataUrl = String(formData.get("signatureDataUrl") || "");
-  const { ensureVisit, persistVisitState } = await import("./persist");
+  const { ensureVisit, persistVisitState, persistClientsAndStock } = await import("./persist");
   const visit = await ensureVisit(visitId);
   if (!visit) return { error: "Atendimento não encontrado" };
 
@@ -1044,9 +1056,11 @@ export async function finishVisit(formData: FormData) {
   }
 
   await persistVisitState(visit, { hasFinalPhoto: true });
+  await persistClientsAndStock(store);
   audit(user.companyId, user.id, "COMPLETE", "ServiceVisit", visit.id);
   revalidatePath(`/visits/${visit.id}`);
   revalidatePath("/dashboard");
+  revalidatePath("/schedule");
   return { ok: true };
 }
 
