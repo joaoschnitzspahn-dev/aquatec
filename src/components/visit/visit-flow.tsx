@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { Badge, Section } from "@/components/ui/misc";
+import { SignaturePad } from "@/components/visit/signature-pad";
 import { formatDateTime, minutesToLabel, whatsappUrl, googleMapsUrl, formatDistance } from "@/lib/utils";
 import { generateVisitPdf } from "@/lib/pdf/visit-report";
 import { getQuickGeo, warmGps } from "@/lib/geo";
@@ -59,7 +60,7 @@ export function VisitFlow({ data }: { data: VisitData }) {
     productId: string;
     quantity: number;
   } | null>(null);
-  const sigRef = useRef<SignatureCanvas>(null);
+  const sigRef = useRef<SignatureCanvas | null>(null);
 
   const checkedCount = data.checklist.filter((c) => c.response?.checked).length;
   const requiredOk = data.checklist
@@ -482,17 +483,7 @@ export function VisitFlow({ data }: { data: VisitData }) {
                   ) : null}
                   <div>
                     <Label>Assinatura do cliente</Label>
-                    <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-white">
-                      <SignatureCanvas
-                        ref={sigRef}
-                        canvasProps={{
-                          className: "h-36 w-full touch-none",
-                          width: 600,
-                          height: 144,
-                          style: { width: "100%", height: "144px" },
-                        }}
-                      />
-                    </div>
+                    <SignaturePad sigRef={sigRef} />
                     <Button
                       type="button"
                       variant="ghost"
